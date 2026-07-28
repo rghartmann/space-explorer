@@ -32,28 +32,25 @@ pub fn animate_cockpit_buttons_system(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     autopilot: Res<AutoPilotState>,
+    flight_state: Res<FlightState>,
     button_query: Query<(&CockpitButton, &MeshMaterial3d<StandardMaterial>)>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let dt = time.delta_secs();
 
-    let is_thrusting = keyboard.pressed(KeyCode::KeyW)
-        || keyboard.pressed(KeyCode::KeyS)
-        || keyboard.pressed(KeyCode::Space);
-    let is_boosting = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
-    let is_steering = keyboard.pressed(KeyCode::KeyQ)
-        || keyboard.pressed(KeyCode::KeyE)
-        || keyboard.pressed(KeyCode::KeyA)
-        || keyboard.pressed(KeyCode::KeyD);
+    let is_thrusting = keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::KeyS);
+    let is_boosting = flight_state.boost_mode;
+    let is_orbit_steering = (autopilot.arrived || autopilot.engine_stopped)
+        && (keyboard.pressed(KeyCode::KeyQ) || keyboard.pressed(KeyCode::KeyE));
 
     for (btn, mat_handle) in &button_query {
         if let Some(mut mat) = materials.get_mut(mat_handle) {
             let active = match btn.button_type {
                 CockpitButtonType::Thruster => is_thrusting,
                 CockpitButtonType::Warp => is_boosting,
-                CockpitButtonType::AutoNav => is_steering || autopilot.active,
+                CockpitButtonType::AutoNav => is_orbit_steering || autopilot.active,
                 CockpitButtonType::Shields => true,
-                CockpitButtonType::Alert => is_boosting,
+                CockpitButtonType::Alert => is_boosting || flight_state.rapid_decel,
                 CockpitButtonType::OrbitStop => autopilot.engine_stopped,
             };
 
@@ -83,8 +80,12 @@ pub fn update_hud_system(
     let speed = flight_state.velocity.length();
     let speed_of_light = 299_792.458;
 
-    let speed_str = if speed > speed_of_light {
-        format!("{:.0} km/s ({:.2}x c - FTL WARP)", speed, speed / speed_of_light)
+    let speed_str = if flight_state.boost_mode {
+        format!("{:.0} km/s ({:.2}x c - FTL WARP BOOST ACTIVE)", speed, speed / speed_of_light)
+    } else if flight_state.rapid_decel {
+        format!("{:.0} km/s (RAPID BRAKING)", speed)
+    } else if speed > speed_of_light {
+        format!("{:.0} km/s ({:.2}x c - FTL)", speed, speed / speed_of_light)
     } else if speed > 1000.0 {
         let c_percent = (speed / speed_of_light * 100.0).min(99.9999);
         format!("{:.0} km/s ({:.4}% c)", speed, c_percent)
@@ -110,12 +111,10 @@ pub fn update_hud_system(
                     }
                 }
 
-                let status_label = if autopilot.engine_stopped {
-                    "ENGINE STOPPED - LOW PLANETARY ORBIT (SLOW CIRCLING)"
-                } else if autopilot.arrived {
-                    "PARKING ORBIT REACHED"
+                let status_label = if autopilot.engine_stopped || autopilot.arrived {
+                    "IN PLANET ORBIT (USE Q/E TO ORBIT LEFT/RIGHT | W TO BREAK ORBIT)"
                 } else {
-                    "EN ROUTE (CAMERA FOCUS ENGAGED)"
+                    "EN ROUTE TO DESTINATION"
                 };
 
                 **text = format!(
@@ -128,9 +127,14 @@ pub fn update_hud_system(
                 );
             }
         } else {
+            let mode_hint = if flight_state.boost_mode {
+                "BOOST MODE | PRESS SPACE AGAIN TO BRAKE QUICKLY"
+            } else {
+                "W/S: ACCEL/DECEL | MOUSE: STEER | SPACE: BOOST MODE | [0-9]: AUTOPILOT | [O]: ORBIT"
+            };
             **text = format!(
-                "FLIGHT STATUS: MANUAL CONTROL | SPEED: {} | PRESS [0-9] TO ENGAGE AUTOPILOT | PRESS [O] TO STOP ENGINE & ORBIT",
-                speed_str
+                "FLIGHT STATUS: MANUAL CONTROL | SPEED: {} | {}",
+                speed_str, mode_hint
             );
         }
     }

@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::audio::{ensure_ambient_piano_file, ensure_engine_hum_file};
 use crate::components::*;
-use crate::resources::FlightState;
+use crate::resources::{AppState, FlightState, LoadingAssets};
 
 pub fn setup_scene(
     mut commands: Commands,
@@ -58,7 +58,7 @@ pub fn setup_scene(
             ));
 
             parent.spawn((
-                Text::new("FLIGHT CONTROLS: WASD (Thrust: 8,000 km/s²) | SHIFT (Warp Boost: 120,000 km/s²) | Q/E (Steer Yaw) | [O] Stop Engine & Orbit | ESC (Exit)"),
+                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel) | MOUSE (Steer Pitch/Yaw) | SPACE (Toggle Boost / Rapid Brake) | Q/E (Orbit Left/Right in Orbit) | [O] Stop Engine & Orbit | ESC (Exit)"),
                 TextFont {
                     font_size: 12.0.into(),
                     ..default()
@@ -670,10 +670,10 @@ pub fn setup_scene(
     commands.entity(ship_entity).add_child(left_strut);
     commands.entity(ship_entity).add_child(right_strut);
 
-    let hud_ring_mesh = meshes.add(Torus { minor_radius: 0.002, major_radius: 0.045 });
+    let hud_ring_mesh = meshes.add(create_dotted_circle_mesh(36, 0.045, 0.0006));
     let hud_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 0.95, 1.0, 0.85),
-        emissive: LinearRgba::new(0.0, 1.8, 2.2, 1.0),
+        base_color: Color::srgba(0.78, 0.78, 0.82, 0.8),
+        emissive: LinearRgba::new(0.65, 0.65, 0.70, 1.0),
         unlit: true,
         ..default()
     });
@@ -682,8 +682,7 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(hud_ring_mesh),
             MeshMaterial3d(hud_mat),
-            Transform::from_xyz(0.0, 0.0, -1.0)
-                .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+            Transform::from_xyz(0.0, 0.0, -1.0),
         ))
         .id();
     commands.entity(camera_entity).add_child(hud_ring);
@@ -1607,6 +1606,200 @@ pub fn spawn_planet_area_light(
         ))
         .id();
     commands.entity(parent_entity).add_child(light_entity);
+}
+
+#[derive(Component)]
+pub struct LoadingScreenUI;
+
+#[derive(Component)]
+pub struct LoadingTextUI;
+
+pub fn setup_loading_screen(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut loading_assets: ResMut<LoadingAssets>,
+) {
+    ensure_engine_hum_file();
+    ensure_ambient_piano_file();
+
+    let asset_paths = [
+        "audio/engine_hum.wav",
+        "audio/ambient_piano.wav",
+        "textures/control_panel.jpg",
+        "textures/nav_screen.jpg",
+        "textures/diag_screen.jpg",
+        "textures/button_thruster.jpg",
+        "textures/button_warp.jpg",
+        "textures/button_shields.jpg",
+        "textures/button_autonav.jpg",
+        "textures/button_alert.jpg",
+        "textures/space_skybox.png",
+        "textures/sun.jpg",
+        "textures/mercury.jpg",
+        "textures/venus.jpg",
+        "textures/earth.jpg",
+        "textures/moon.jpg",
+        "textures/mars.jpg",
+        "textures/ceres.jpg",
+        "textures/asteroid.jpg",
+        "textures/jupiter.jpg",
+        "textures/saturn.jpg",
+        "textures/saturn_ring.png",
+        "textures/uranus.jpg",
+        "textures/neptune.jpg",
+        "textures/pluto.jpg",
+        "textures/haumea.jpg",
+        "textures/makemake.jpg",
+        "textures/eris.jpg",
+    ];
+
+    loading_assets.handles.clear();
+    for path in asset_paths {
+        let handle: Handle<Image> = asset_server.load(path);
+        loading_assets.handles.push(handle.untyped());
+    }
+
+    commands.spawn((
+        Camera2d,
+        Camera {
+            order: 100,
+            clear_color: ClearColorConfig::Custom(Color::srgb(0.001, 0.001, 0.003)),
+            ..default()
+        },
+        LoadingScreenUI,
+    ));
+
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(16.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.001, 0.001, 0.003, 1.0)),
+            LoadingScreenUI,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("SPACE EXPLORER - SOLAR SYSTEM SIMULATOR"),
+                TextFont {
+                    font_size: 28.0.into(),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.0, 0.85, 1.0)),
+            ));
+
+            parent.spawn((
+                LoadingTextUI,
+                Text::new("PRELOADING SOLAR SYSTEM RESOURCES (0%)..."),
+                TextFont {
+                    font_size: 16.0.into(),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.8, 0.85, 0.9)),
+            ));
+        });
+}
+
+pub fn check_loading_status(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    loading_assets: Res<LoadingAssets>,
+    mut next_state: ResMut<NextState<AppState>>,
+    loading_ui_query: Query<Entity, With<LoadingScreenUI>>,
+    mut text_query: Query<&mut Text, With<LoadingTextUI>>,
+) {
+    let total = loading_assets.handles.len();
+    if total == 0 {
+        next_state.set(AppState::InGame);
+        return;
+    }
+
+    let mut loaded_count = 0;
+    for handle in &loading_assets.handles {
+        let state = asset_server.load_state(handle.id());
+        if matches!(state, bevy::asset::LoadState::Loaded | bevy::asset::LoadState::Failed(_)) {
+            loaded_count += 1;
+        }
+    }
+
+    let pct = (loaded_count as f32 / total as f32) * 100.0;
+    for mut text in &mut text_query {
+        **text = format!("PRELOADING SOLAR SYSTEM RESOURCES: {}/{} ({:.0}%)", loaded_count, total, pct);
+    }
+
+    if loaded_count >= total {
+        for entity in &loading_ui_query {
+            commands.entity(entity).despawn();
+        }
+        next_state.set(AppState::InGame);
+    }
+}
+
+fn create_dotted_circle_mesh(num_dots: usize, circle_radius: f32, dot_radius: f32) -> Mesh {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::PrimitiveTopology;
+    use std::f32::consts::PI;
+
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    let rings = 4;
+    let segments = 6;
+
+    for i in 0..num_dots {
+        let angle = (i as f32 / num_dots as f32) * 2.0 * PI;
+        let center = Vec3::new(circle_radius * angle.cos(), circle_radius * angle.sin(), 0.0);
+
+        let base_index = positions.len() as u32;
+
+        for r in 0..=rings {
+            let v = (r as f32 / rings as f32) * PI;
+            for s in 0..=segments {
+                let u = (s as f32 / segments as f32) * 2.0 * PI;
+
+                let nx = v.sin() * u.cos();
+                let ny = v.sin() * u.sin();
+                let nz = v.cos();
+                let normal = Vec3::new(nx, ny, nz);
+
+                let pos = center + normal * dot_radius;
+
+                positions.push([pos.x, pos.y, pos.z]);
+                normals.push([normal.x, normal.y, normal.z]);
+                uvs.push([u / (2.0 * PI), v / PI]);
+            }
+        }
+
+        let stride = segments + 1;
+        for r in 0..rings {
+            for s in 0..segments {
+                let first = base_index + (r * stride + s) as u32;
+                let second = first + stride as u32;
+
+                indices.push(first);
+                indices.push(second);
+                indices.push(first + 1);
+
+                indices.push(second);
+                indices.push(second + 1);
+                indices.push(first + 1);
+            }
+        }
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(bevy::mesh::Indices::U32(indices));
+    mesh
 }
 
 #[cfg(test)]
