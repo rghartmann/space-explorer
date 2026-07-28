@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::components::{
-    Asteroid, Moon, PilotCamera, Planet, PlanetAreaLight, Ship, SpaceDust, Starfield, Sun,
+    Asteroid, Moon, PilotCamera, Planet, PlanetAreaLight, Ship, SkyboxSphere, SpaceDust, Starfield, Sun,
 };
 use crate::resources::FlightState;
 
@@ -11,6 +11,8 @@ type SunRenderQueryFilter = (
     Without<Moon>,
     Without<Asteroid>,
     Without<SpaceDust>,
+    Without<Starfield>,
+    Without<SkyboxSphere>,
     Without<PilotCamera>,
     Without<PlanetAreaLight>,
 );
@@ -20,6 +22,8 @@ type PlanetRenderQueryFilter = (
     Without<Moon>,
     Without<Asteroid>,
     Without<SpaceDust>,
+    Without<Starfield>,
+    Without<SkyboxSphere>,
     Without<PilotCamera>,
     Without<PlanetAreaLight>,
 );
@@ -29,6 +33,8 @@ type MoonRenderQueryFilter = (
     Without<Planet>,
     Without<Asteroid>,
     Without<SpaceDust>,
+    Without<Starfield>,
+    Without<SkyboxSphere>,
     Without<PilotCamera>,
     Without<PlanetAreaLight>,
 );
@@ -38,6 +44,8 @@ type AsteroidRenderQueryFilter = (
     Without<Planet>,
     Without<Moon>,
     Without<SpaceDust>,
+    Without<Starfield>,
+    Without<SkyboxSphere>,
     Without<PilotCamera>,
     Without<PlanetAreaLight>,
 );
@@ -47,6 +55,8 @@ type DustRenderQueryFilter = (
     Without<Planet>,
     Without<Moon>,
     Without<Asteroid>,
+    Without<Starfield>,
+    Without<SkyboxSphere>,
     Without<PilotCamera>,
     Without<PlanetAreaLight>,
 );
@@ -57,6 +67,18 @@ type StarRenderQueryFilter = (
     Without<Moon>,
     Without<Asteroid>,
     Without<SpaceDust>,
+    Without<SkyboxSphere>,
+    Without<PilotCamera>,
+    Without<PlanetAreaLight>,
+);
+type SkyboxRenderQueryFilter = (
+    Without<Ship>,
+    Without<Sun>,
+    Without<Planet>,
+    Without<Moon>,
+    Without<Asteroid>,
+    Without<SpaceDust>,
+    Without<Starfield>,
     Without<PilotCamera>,
     Without<PlanetAreaLight>,
 );
@@ -71,6 +93,7 @@ pub fn logarithmic_distance_render_system(
     mut asteroid_query: Query<(&Asteroid, &mut Transform, &mut Visibility), AsteroidRenderQueryFilter>,
     mut dust_query: Query<(&SpaceDust, &mut Transform, &mut Visibility), DustRenderQueryFilter>,
     mut star_query: Query<(&Starfield, &mut Transform, &mut Visibility), StarRenderQueryFilter>,
+    mut skybox_query: Query<&mut Transform, (With<SkyboxSphere>, SkyboxRenderQueryFilter)>,
 ) {
     let Ok(ship_transform) = ship_query.single() else { return; };
     let Ok(cam_transform) = camera_query.single() else { return; };
@@ -232,6 +255,11 @@ pub fn logarithmic_distance_render_system(
 
         transform.translation = dir * d_vis;
         transform.scale = Vec3::splat(dust.size_scale);
+    }
+
+    // Render SkyboxSphere (Fixed 360-degree Space Spheremap around camera)
+    for mut transform in &mut skybox_query {
+        transform.translation = Vec3::ZERO;
     }
 
     // Render Starfield (Fixed 2D Billboard Point Skybox around camera)

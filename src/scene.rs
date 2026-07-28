@@ -191,7 +191,7 @@ pub fn setup_scene(
                 ..default()
             },
             Projection::Perspective(PerspectiveProjection {
-                far: 100_000.0,
+                far: 120_000.0,
                 ..default()
             }),
             Transform::from_xyz(0.0, 0.5, 0.0),
@@ -692,7 +692,7 @@ pub fn setup_scene(
     // 2. THE SUN (NASA HIGH-RES RADIANT SURFACE & COLOSSAL SOLAR CORONA)
     // ----------------------------------------------------
     let sun_tex: Handle<Image> = asset_server.load("textures/sun.jpg");
-    let sun_mesh = meshes.add(Sphere::new(32790.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 128, stacks: 64 }));
+    let sun_mesh = meshes.add(Sphere::new(32790.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 192, stacks: 96 }));
     let sun_mat = materials.add(StandardMaterial {
         base_color_texture: Some(sun_tex.clone()),
         emissive_texture: Some(sun_tex),
@@ -745,7 +745,7 @@ pub fn setup_scene(
     let mercury_angle = next_orbit_angle();
     let mercury_pos = Vec3::new(mercury_orbit_radius * mercury_angle.cos(), 0.0, mercury_orbit_radius * mercury_angle.sin());
     let mercury_tex: Handle<Image> = asset_server.load("textures/mercury.jpg");
-    let mercury_mesh = meshes.add(Sphere::new(114.9).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let mercury_mesh = meshes.add(Sphere::new(114.9).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let mercury_mat = materials.add(StandardMaterial {
         base_color_texture: Some(mercury_tex),
         perceptual_roughness: 0.9,
@@ -774,7 +774,7 @@ pub fn setup_scene(
     let venus_angle = next_orbit_angle();
     let venus_pos = Vec3::new(venus_orbit_radius * venus_angle.cos(), 0.0, venus_orbit_radius * venus_angle.sin());
     let venus_tex: Handle<Image> = asset_server.load("textures/venus.jpg");
-    let venus_mesh = meshes.add(Sphere::new(285.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
+    let venus_mesh = meshes.add(Sphere::new(285.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 128, stacks: 64 }));
     let venus_mat = materials.add(StandardMaterial {
         base_color_texture: Some(venus_tex),
         perceptual_roughness: 0.4,
@@ -803,7 +803,7 @@ pub fn setup_scene(
     let earth_angle = next_orbit_angle();
     let earth_pos = Vec3::new(earth_orbit_radius * earth_angle.cos(), 0.0, earth_orbit_radius * earth_angle.sin());
     let earth_tex: Handle<Image> = asset_server.load("textures/earth.jpg");
-    let earth_mesh = meshes.add(Sphere::new(300.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
+    let earth_mesh = meshes.add(Sphere::new(300.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 128, stacks: 64 }));
     let earth_mat = materials.add(StandardMaterial {
         base_color_texture: Some(earth_tex),
         perceptual_roughness: 0.35,
@@ -838,7 +838,7 @@ pub fn setup_scene(
     let moon_angle = next_orbit_angle();
     let moon_pos = earth_pos + Vec3::new(moon_orbit_radius * moon_angle.cos(), 0.0, moon_orbit_radius * moon_angle.sin());
     let moon_tex: Handle<Image> = asset_server.load("textures/moon.jpg");
-    let moon_mesh = meshes.add(Sphere::new(81.8).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let moon_mesh = meshes.add(Sphere::new(81.8).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let moon_mat = materials.add(StandardMaterial {
         base_color_texture: Some(moon_tex),
         perceptual_roughness: 0.85,
@@ -867,7 +867,7 @@ pub fn setup_scene(
     let mars_angle = next_orbit_angle();
     let mars_pos = Vec3::new(mars_orbit_radius * mars_angle.cos(), 0.0, mars_orbit_radius * mars_angle.sin());
     let mars_tex: Handle<Image> = asset_server.load("textures/mars.jpg");
-    let mars_mesh = meshes.add(Sphere::new(159.6).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 80, stacks: 40 }));
+    let mars_mesh = meshes.add(Sphere::new(159.6).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 128, stacks: 64 }));
     let mars_mat = materials.add(StandardMaterial {
         base_color_texture: Some(mars_tex),
         perceptual_roughness: 0.75,
@@ -896,7 +896,7 @@ pub fn setup_scene(
     let ceres_angle = next_orbit_angle();
     let ceres_pos = Vec3::new(ceres_orbit_radius * ceres_angle.cos(), 0.0, ceres_orbit_radius * ceres_angle.sin());
     let ceres_tex: Handle<Image> = asset_server.load("textures/ceres.jpg");
-    let ceres_mesh = meshes.add(Sphere::new(22.3).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let ceres_mesh = meshes.add(Sphere::new(22.3).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let ceres_mat = materials.add(StandardMaterial {
         base_color_texture: Some(ceres_tex),
         perceptual_roughness: 0.85,
@@ -1001,7 +1001,7 @@ pub fn setup_scene(
     let jupiter_angle = next_orbit_angle();
     let jupiter_pos = Vec3::new(jupiter_orbit_radius * jupiter_angle.cos(), 0.0, jupiter_orbit_radius * jupiter_angle.sin());
     let jupiter_tex: Handle<Image> = asset_server.load("textures/jupiter.jpg");
-    let jupiter_mesh = meshes.add(Sphere::new(3292.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 128, stacks: 64 }));
+    let jupiter_mesh = meshes.add(Sphere::new(3292.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 192, stacks: 96 }));
     let jupiter_mat = materials.add(StandardMaterial {
         base_color_texture: Some(jupiter_tex),
         perceptual_roughness: 0.5,
@@ -1029,7 +1029,7 @@ pub fn setup_scene(
     let io_orbit_speed = 0.45;
     let io_angle = next_orbit_angle();
     let io_pos = jupiter_pos + Vec3::new(io_orbit_radius * io_angle.cos(), 0.0, io_orbit_radius * io_angle.sin());
-    let io_mesh = meshes.add(Sphere::new(85.8).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let io_mesh = meshes.add(Sphere::new(85.8).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let io_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.9, 0.85, 0.2),
         perceptual_roughness: 0.7,
@@ -1057,7 +1057,7 @@ pub fn setup_scene(
     let europa_orbit_speed = 0.32;
     let europa_angle = next_orbit_angle();
     let europa_pos = jupiter_pos + Vec3::new(europa_orbit_radius * europa_angle.cos(), 0.0, europa_orbit_radius * europa_angle.sin());
-    let europa_mesh = meshes.add(Sphere::new(73.5).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let europa_mesh = meshes.add(Sphere::new(73.5).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let europa_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.85, 0.88, 0.95),
         perceptual_roughness: 0.2,
@@ -1087,7 +1087,7 @@ pub fn setup_scene(
     let saturn_angle = next_orbit_angle();
     let saturn_pos = Vec3::new(saturn_orbit_radius * saturn_angle.cos(), 0.0, saturn_orbit_radius * saturn_angle.sin());
     let saturn_tex: Handle<Image> = asset_server.load("textures/saturn.jpg");
-    let saturn_mesh = meshes.add(Sphere::new(2742.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 128, stacks: 64 }));
+    let saturn_mesh = meshes.add(Sphere::new(2742.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 192, stacks: 96 }));
     let saturn_mat = materials.add(StandardMaterial {
         base_color_texture: Some(saturn_tex),
         perceptual_roughness: 0.45,
@@ -1114,7 +1114,7 @@ pub fn setup_scene(
 
     // Saturn Ring System (Transparent 2D Ring Plane Disk with Radial Texture)
     let saturn_ring_tex: Handle<Image> = asset_server.load("textures/saturn_ring.png");
-    let ring_plane_mesh = meshes.add(create_flat_ring_mesh(3290.4, 6306.6, 128, 8));
+    let ring_plane_mesh = meshes.add(create_flat_ring_mesh(3290.4, 6306.6, 256, 16));
     let ring_mat = materials.add(StandardMaterial {
         base_color_texture: Some(saturn_ring_tex.clone()),
         emissive_texture: Some(saturn_ring_tex.clone()),
@@ -1179,7 +1179,7 @@ pub fn setup_scene(
     let uranus_angle = next_orbit_angle();
     let uranus_pos = Vec3::new(uranus_orbit_radius * uranus_angle.cos(), 0.0, uranus_orbit_radius * uranus_angle.sin());
     let uranus_tex: Handle<Image> = asset_server.load("textures/uranus.jpg");
-    let uranus_mesh = meshes.add(Sphere::new(1194.3).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
+    let uranus_mesh = meshes.add(Sphere::new(1194.3).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 160, stacks: 80 }));
     let uranus_mat = materials.add(StandardMaterial {
         base_color_texture: Some(uranus_tex),
         perceptual_roughness: 0.3,
@@ -1208,7 +1208,7 @@ pub fn setup_scene(
     let neptune_angle = next_orbit_angle();
     let neptune_pos = Vec3::new(neptune_orbit_radius * neptune_angle.cos(), 0.0, neptune_orbit_radius * neptune_angle.sin());
     let neptune_tex: Handle<Image> = asset_server.load("textures/neptune.jpg");
-    let neptune_mesh = meshes.add(Sphere::new(1159.4).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
+    let neptune_mesh = meshes.add(Sphere::new(1159.4).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 160, stacks: 80 }));
     let neptune_mat = materials.add(StandardMaterial {
         base_color_texture: Some(neptune_tex),
         perceptual_roughness: 0.25,
@@ -1237,7 +1237,7 @@ pub fn setup_scene(
     let pluto_angle = next_orbit_angle();
     let pluto_pos = Vec3::new(pluto_orbit_radius * pluto_angle.cos(), 0.0, pluto_orbit_radius * pluto_angle.sin());
     let pluto_tex: Handle<Image> = asset_server.load("textures/pluto.jpg");
-    let pluto_mesh = meshes.add(Sphere::new(56.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let pluto_mesh = meshes.add(Sphere::new(56.0).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let pluto_mat = materials.add(StandardMaterial {
         base_color_texture: Some(pluto_tex),
         perceptual_roughness: 0.7,
@@ -1265,7 +1265,7 @@ pub fn setup_scene(
     let charon_orbit_speed = 0.2;
     let charon_angle = next_orbit_angle();
     let charon_pos = pluto_pos + Vec3::new(charon_orbit_radius * charon_angle.cos(), 0.0, charon_orbit_radius * charon_angle.sin());
-    let charon_mesh = meshes.add(Sphere::new(28.5).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let charon_mesh = meshes.add(Sphere::new(28.5).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let charon_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.5, 0.48, 0.45),
         perceptual_roughness: 0.85,
@@ -1294,7 +1294,7 @@ pub fn setup_scene(
     let haumea_angle = next_orbit_angle();
     let haumea_pos = Vec3::new(haumea_orbit_radius * haumea_angle.cos(), 0.0, haumea_orbit_radius * haumea_angle.sin());
     let haumea_tex: Handle<Image> = asset_server.load("textures/haumea.jpg");
-    let haumea_mesh = meshes.add(Sphere::new(37.4).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let haumea_mesh = meshes.add(Sphere::new(37.4).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let haumea_mat = materials.add(StandardMaterial {
         base_color_texture: Some(haumea_tex),
         perceptual_roughness: 0.5,
@@ -1324,7 +1324,7 @@ pub fn setup_scene(
     let makemake_angle = next_orbit_angle();
     let makemake_pos = Vec3::new(makemake_orbit_radius * makemake_angle.cos(), 0.0, makemake_orbit_radius * makemake_angle.sin());
     let makemake_tex: Handle<Image> = asset_server.load("textures/makemake.jpg");
-    let makemake_mesh = meshes.add(Sphere::new(33.7).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let makemake_mesh = meshes.add(Sphere::new(33.7).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let makemake_mat = materials.add(StandardMaterial {
         base_color_texture: Some(makemake_tex),
         perceptual_roughness: 0.65,
@@ -1353,7 +1353,7 @@ pub fn setup_scene(
     let eris_angle = next_orbit_angle();
     let eris_pos = Vec3::new(eris_orbit_radius * eris_angle.cos(), 0.0, eris_orbit_radius * eris_angle.sin());
     let eris_tex: Handle<Image> = asset_server.load("textures/eris.jpg");
-    let eris_mesh = meshes.add(Sphere::new(54.8).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 64, stacks: 32 }));
+    let eris_mesh = meshes.add(Sphere::new(54.8).mesh().kind(bevy::render::mesh::SphereKind::Uv { sectors: 96, stacks: 48 }));
     let eris_mat = materials.add(StandardMaterial {
         base_color_texture: Some(eris_tex),
         perceptual_roughness: 0.3,
@@ -1419,8 +1419,30 @@ pub fn setup_scene(
     }
 
     // ----------------------------------------------------
-    // 5. DEEP SPACE STARFIELD (2D Point Billboards & Hyper-Bright Skybox Sphere)
+    // 5. DEEP SPACE SKYBOX SPHERE (SpaceSpheremaps Spheremap) & STARFIELD
     // ----------------------------------------------------
+    let skybox_tex: Handle<Image> = asset_server.load("textures/space_skybox.png");
+    let skybox_mesh = meshes.add(
+        Sphere::new(95_000.0)
+            .mesh()
+            .kind(bevy::render::mesh::SphereKind::Uv { sectors: 128, stacks: 64 })
+    );
+
+    let skybox_mat = materials.add(StandardMaterial {
+        base_color_texture: Some(skybox_tex),
+        unlit: true,
+        cull_mode: None,
+        double_sided: true,
+        ..default()
+    });
+
+    commands.spawn((
+        SkyboxSphere,
+        Mesh3d(skybox_mesh),
+        MeshMaterial3d(skybox_mat),
+        Transform::from_scale(Vec3::new(-1.0, 1.0, 1.0)),
+    ));
+
     let star_mesh_small = meshes.add(Circle::new(14.0));
     let star_mesh_medium = meshes.add(Circle::new(28.0));
     let star_mesh_large = meshes.add(Circle::new(48.0));
