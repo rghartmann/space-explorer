@@ -301,7 +301,7 @@ pub fn autopilot_flight_system(
         if let Ok(sun) = sun_query.single() {
             target_radius = sun.radius;
         } else {
-            target_radius = 1800.0;
+            target_radius = 32790.0;
         }
         found = true;
     } else {
@@ -323,18 +323,18 @@ pub fn autopilot_flight_system(
     let to_target = target_pos - flight_state.world_pos;
     let distance = to_target.length();
 
-    // Determine safe orbital arrival distance & orbital speed
+    // Determine safe orbital arrival distance & orbital speed (closer orbit approach)
     let (arrival_dist, orbit_speed) = if autopilot.engine_stopped {
         let r = if target_idx == 0 {
-            target_radius * 2.0 + 300.0
+            target_radius * 1.25 + 100.0
         } else {
-            target_radius * 1.5 + 40.0
+            target_radius * 1.15 + 15.0
         };
         (r, 0.05) // Low speed circling (0.05 rad/s)
     } else if target_idx == 0 {
-        (target_radius * 2.5 + 600.0, 0.20)
+        (target_radius * 1.5 + 200.0, 0.20)
     } else {
-        (target_radius * 1.8 + 80.0, 0.20)
+        (target_radius * 1.25 + 25.0, 0.20)
     };
 
     let target_dir = to_target.normalize_or_zero();
