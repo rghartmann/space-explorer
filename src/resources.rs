@@ -2,6 +2,8 @@ use bevy::prelude::*;
 
 #[derive(Resource, Default)]
 pub struct FlightState {
+    pub world_pos: Vec3,       // Real physical position in solar system space
+    pub previous_pos: Vec3,    // Previous frame world position for swept collision
     pub velocity: Vec3,
     pub angular_velocity: Vec2,
     pub yaw: f32,          // Pilot look yaw

@@ -14,34 +14,44 @@ pub struct PilotCamera;
 
 #[derive(Component)]
 pub struct Sun {
-    pub _radius: f32,
+    pub radius: f32,
 }
 
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct Planet {
-    pub _name: &'static str,
+    pub name: &'static str,
     pub index: usize, // 1 to 8
     pub radius: f32,
-    pub _orbit_radius: f32,
-    pub _orbit_speed: f32,
+    pub orbit_radius: f32,
+    pub orbit_speed: f32,
+    pub orbit_angle: f32,
     pub rotation_speed: f32,
     pub world_pos: Vec3,
 }
 
 #[derive(Component)]
 pub struct Moon {
-    pub _name: &'static str,
-    pub _parent_index: usize,
+    pub name: &'static str,
+    pub parent_index: usize,
     pub radius: f32,
-    pub _orbit_radius: f32,
-    pub _orbit_speed: f32,
+    pub orbit_radius: f32,
+    pub orbit_speed: f32,
+    pub orbit_angle: f32,
     pub rotation_speed: f32,
     pub world_pos: Vec3,
 }
 
 #[derive(Component)]
 pub struct Starfield {
-    pub world_pos: Vec3,
+    pub direction: Vec3,
+    pub size_scale: f32,
+}
+
+#[derive(Component)]
+pub struct PlanetAreaLight {
+    pub target_world_pos: Vec3,
+    pub planet_radius: f32,
 }
 
 #[derive(Component)]
@@ -49,6 +59,20 @@ pub struct RadarSweepNeedle;
 
 #[derive(Component)]
 pub struct AutoPilotHudText;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CelestialTargetType {
+    Sun,
+    Planet(usize),
+    Moon(&'static str),
+}
+
+#[derive(Component)]
+pub struct CelestialLabel {
+    pub name: &'static str,
+    pub key_prefix: &'static str,
+    pub target_type: CelestialTargetType,
+}
 
 #[derive(Component, PartialEq, Eq, Clone, Copy)]
 pub enum CockpitButtonType {
@@ -65,3 +89,18 @@ pub struct CockpitButton {
     pub base_emissive: LinearRgba,
     pub active_emissive: LinearRgba,
 }
+
+#[derive(Component)]
+pub struct Asteroid {
+    pub radius: f32,
+    pub rotation_axis: Vec3,
+    pub rotation_speed: f32,
+    pub world_pos: Vec3,
+}
+
+#[derive(Component)]
+pub struct SpaceDust {
+    pub world_pos: Vec3,
+    pub size_scale: f32,
+}
+

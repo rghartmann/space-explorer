@@ -12,13 +12,14 @@ use bevy::window::WindowMode;
 
 use audio::engine_sound_system;
 use cockpit::{
-    animate_cockpit_buttons_system, animate_cockpit_screens_system, exit_on_esc, update_hud_system,
+    animate_cockpit_buttons_system, animate_cockpit_screens_system, exit_on_esc,
+    update_celestial_labels_system, update_hud_system,
 };
 use flight::{
-    autopilot_flight_system, autopilot_input_system, celestial_collision_system, orbit_moons_system,
-    orbit_planets_system, pilot_freelook_system, ship_flight_system,
+    autopilot_flight_system, autopilot_input_system, celestial_collision_system, orbit_asteroids_system,
+    orbit_moons_system, orbit_planets_system, pilot_freelook_system, ship_flight_system,
 };
-use rendering::logarithmic_distance_render_system;
+use rendering::{logarithmic_distance_render_system, update_planet_area_lights_system};
 use resources::{AutoPilotState, FlightState};
 use scene::setup_scene;
 
@@ -39,14 +40,18 @@ fn main() {
         .add_systems(
             Update,
             (
+                (
+                    autopilot_input_system,
+                    autopilot_flight_system,
+                    ship_flight_system,
+                    celestial_collision_system,
+                    pilot_freelook_system,
+                )
+                    .chain(),
                 exit_on_esc,
-                pilot_freelook_system,
-                ship_flight_system,
-                autopilot_input_system,
-                autopilot_flight_system,
-                celestial_collision_system,
                 orbit_planets_system,
                 orbit_moons_system,
+                orbit_asteroids_system,
                 engine_sound_system,
                 animate_cockpit_screens_system,
                 animate_cockpit_buttons_system,
@@ -55,7 +60,12 @@ fn main() {
         )
         .add_systems(
             PostUpdate,
-            logarithmic_distance_render_system.before(TransformSystems::Propagate),
+            (
+                logarithmic_distance_render_system.before(TransformSystems::Propagate),
+                update_planet_area_lights_system.before(TransformSystems::Propagate),
+                update_celestial_labels_system,
+            )
+                .chain(),
         )
         .run();
 }
