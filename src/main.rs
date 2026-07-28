@@ -18,6 +18,7 @@ use cockpit::{
 use flight::{
     autopilot_flight_system, autopilot_input_system, celestial_collision_system, orbit_asteroids_system,
     orbit_moons_system, orbit_planets_system, pilot_freelook_system, ship_flight_system,
+    stop_engine_input_system,
 };
 use rendering::{logarithmic_distance_render_system, update_planet_area_lights_system};
 use resources::{AutoPilotState, FlightState};
@@ -41,7 +42,7 @@ fn main() {
             Update,
             (
                 (
-                    autopilot_input_system,
+                    (autopilot_input_system, stop_engine_input_system),
                     autopilot_flight_system,
                     ship_flight_system,
                     celestial_collision_system,

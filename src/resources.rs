@@ -18,4 +18,6 @@ pub struct AutoPilotState {
     pub target_index: Option<usize>,
     pub target_name: &'static str,
     pub arrived: bool,
+    pub engine_stopped: bool,
 }
+

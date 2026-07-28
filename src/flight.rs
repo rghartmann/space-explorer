@@ -2,7 +2,7 @@ use bevy::input::mouse::MouseMotion;
 use bevy::ecs::message::MessageReader;
 use bevy::prelude::*;
 
-use crate::components::{Asteroid, Moon, PilotCamera, Planet, Ship, Sun};
+use crate::components::{Asteroid, Moon, PilotCamera, Planet, Ship, StopEngineButton, Sun};
 use crate::resources::{AutoPilotState, FlightState};
 
 #[allow(dead_code)]
@@ -15,7 +15,10 @@ pub fn pilot_freelook_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut mouse_events: MessageReader<MouseMotion>,
     mut flight_state: ResMut<FlightState>,
+    autopilot: Res<AutoPilotState>,
     mut camera_query: Query<&mut Transform, With<PilotCamera>>,
+    ship_query: Query<&Transform, (With<Ship>, Without<PilotCamera>)>,
+    planet_query: Query<&Planet>,
 ) {
     let mut mouse_delta = Vec2::ZERO;
     for event in mouse_events.read() {
@@ -23,32 +26,68 @@ pub fn pilot_freelook_system(
     }
 
     let dt = time.delta_secs();
-    let sensitivity = 0.0012; // Gentle head turn sensitivity
-    let key_speed = 0.6 * dt;   // Gentle key pan speed
 
-    let mut look_target = Vec2::ZERO;
+    // When auto-pilot destination is selected, focus camera on destination for travel distance
+    if autopilot.active && !autopilot.arrived {
+        if let Some(target_idx) = autopilot.target_index {
+            let mut target_pos = Vec3::ZERO;
+            let mut found = false;
 
-    if mouse_delta != Vec2::ZERO {
-        look_target.x -= mouse_delta.x * sensitivity;
-        look_target.y -= mouse_delta.y * sensitivity;
-    }
+            if target_idx == 0 {
+                target_pos = Vec3::ZERO;
+                found = true;
+            } else {
+                for planet in &planet_query {
+                    if planet.index == target_idx {
+                        target_pos = planet.world_pos;
+                        found = true;
+                        break;
+                    }
+                }
+            }
 
-    if keyboard.pressed(KeyCode::KeyI) || keyboard.pressed(KeyCode::ArrowUp) {
-        look_target.y += key_speed;
-    }
-    if keyboard.pressed(KeyCode::KeyK) || keyboard.pressed(KeyCode::ArrowDown) {
-        look_target.y -= key_speed;
-    }
-    if keyboard.pressed(KeyCode::KeyJ) || keyboard.pressed(KeyCode::ArrowLeft) {
-        look_target.x += key_speed;
-    }
-    if keyboard.pressed(KeyCode::KeyL) || keyboard.pressed(KeyCode::ArrowRight) {
-        look_target.x -= key_speed;
-    }
+            if found {
+                if let Ok(ship_transform) = ship_query.single() {
+                    let to_target = (target_pos - flight_state.world_pos).normalize_or_zero();
+                    if to_target != Vec3::ZERO {
+                        let local_dir = ship_transform.rotation.inverse() * to_target;
+                        let focus_yaw = (-local_dir.x).atan2(-local_dir.z).clamp(-1.35, 1.35);
+                        let focus_pitch = local_dir.y.asin().clamp(-0.75, 0.75);
 
-    // Natural pilot head rotation limits inside cockpit (yaw: ±77 deg, pitch: ±43 deg)
-    flight_state.target_yaw = (flight_state.target_yaw + look_target.x).clamp(-1.35, 1.35);
-    flight_state.target_pitch = (flight_state.target_pitch + look_target.y).clamp(-0.75, 0.75);
+                        flight_state.target_yaw = focus_yaw;
+                        flight_state.target_pitch = focus_pitch;
+                    }
+                }
+            }
+        }
+    } else {
+        // Natural pilot head rotation limits inside cockpit (yaw: ±77 deg, pitch: ±43 deg)
+        let sensitivity = 0.0012; // Gentle head turn sensitivity
+        let key_speed = 0.6 * dt;   // Gentle key pan speed
+
+        let mut look_target = Vec2::ZERO;
+
+        if mouse_delta != Vec2::ZERO {
+            look_target.x -= mouse_delta.x * sensitivity;
+            look_target.y -= mouse_delta.y * sensitivity;
+        }
+
+        if keyboard.pressed(KeyCode::KeyI) || keyboard.pressed(KeyCode::ArrowUp) {
+            look_target.y += key_speed;
+        }
+        if keyboard.pressed(KeyCode::KeyK) || keyboard.pressed(KeyCode::ArrowDown) {
+            look_target.y -= key_speed;
+        }
+        if keyboard.pressed(KeyCode::KeyJ) || keyboard.pressed(KeyCode::ArrowLeft) {
+            look_target.x += key_speed;
+        }
+        if keyboard.pressed(KeyCode::KeyL) || keyboard.pressed(KeyCode::ArrowRight) {
+            look_target.x -= key_speed;
+        }
+
+        flight_state.target_yaw = (flight_state.target_yaw + look_target.x).clamp(-1.35, 1.35);
+        flight_state.target_pitch = (flight_state.target_pitch + look_target.y).clamp(-0.75, 0.75);
+    }
 
     let decay = 1.0 - (-8.0 * dt).exp(); // Gentle smooth neck movement decay
     flight_state.yaw += (flight_state.target_yaw - flight_state.yaw) * decay;
@@ -77,7 +116,7 @@ pub fn ship_flight_system(
     // Record previous world position for swept line-segment collision detection
     flight_state.previous_pos = flight_state.world_pos;
 
-    // Disengage autopilot if user inputs manual steering or thrust controls
+    // Disengage autopilot / engine stop if user inputs manual steering or thrust controls
     let is_manual_steering = keyboard.pressed(KeyCode::KeyQ) || keyboard.pressed(KeyCode::KeyE);
     let is_manual_thrust = keyboard.pressed(KeyCode::KeyW)
         || keyboard.pressed(KeyCode::KeyS)
@@ -85,9 +124,10 @@ pub fn ship_flight_system(
         || keyboard.pressed(KeyCode::KeyD)
         || keyboard.pressed(KeyCode::Space);
 
-    if autopilot.active && (is_manual_steering || is_manual_thrust) {
+    if (autopilot.active || autopilot.engine_stopped) && (is_manual_steering || is_manual_thrust) {
         autopilot.active = false;
         autopilot.arrived = false;
+        autopilot.engine_stopped = false;
     }
 
     // Ship Manual Steering (Q / E keys)
@@ -180,6 +220,59 @@ pub fn autopilot_input_system(
             autopilot.target_index = Some(idx);
             autopilot.target_name = name;
             autopilot.arrived = false;
+            autopilot.engine_stopped = false;
+        }
+    }
+}
+
+pub fn stop_engine_input_system(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut interaction_query: Query<(&Interaction, &mut BackgroundColor), (Changed<Interaction>, With<StopEngineButton>)>,
+    mut autopilot: ResMut<AutoPilotState>,
+    mut flight_state: ResMut<FlightState>,
+    planet_query: Query<&Planet>,
+) {
+    let mut triggered = keyboard.just_pressed(KeyCode::KeyO);
+
+    for (interaction, mut bg_color) in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => {
+                *bg_color = BackgroundColor(Color::srgba(1.0, 0.2, 0.2, 0.95));
+                triggered = true;
+            }
+            Interaction::Hovered => {
+                *bg_color = BackgroundColor(Color::srgba(0.9, 0.2, 0.2, 0.85));
+            }
+            Interaction::None => {
+                *bg_color = BackgroundColor(Color::srgba(0.8, 0.15, 0.15, 0.75));
+            }
+        }
+    }
+
+    if triggered {
+        // Completely stop engine thrust
+        flight_state.velocity = Vec3::ZERO;
+        autopilot.active = true;
+        autopilot.arrived = true;
+        autopilot.engine_stopped = true;
+
+        // If target_index is not set, find nearest planet or Sun
+        if autopilot.target_index.is_none() {
+            let mut min_dist = flight_state.world_pos.distance(Vec3::ZERO);
+            let mut closest_idx = 0;
+            let mut closest_name = "Sun";
+
+            for planet in &planet_query {
+                let dist = flight_state.world_pos.distance(planet.world_pos);
+                if dist < min_dist {
+                    min_dist = dist;
+                    closest_idx = planet.index;
+                    closest_name = planet.name;
+                }
+            }
+
+            autopilot.target_index = Some(closest_idx);
+            autopilot.target_name = closest_name;
         }
     }
 }
@@ -230,34 +323,45 @@ pub fn autopilot_flight_system(
     let to_target = target_pos - flight_state.world_pos;
     let distance = to_target.length();
 
-    // Safe orbital arrival distance proportional to body radius
-    let arrival_dist = if target_idx == 0 {
-        target_radius * 2.5 + 600.0
+    // Determine safe orbital arrival distance & orbital speed
+    let (arrival_dist, orbit_speed) = if autopilot.engine_stopped {
+        let r = if target_idx == 0 {
+            target_radius * 2.0 + 300.0
+        } else {
+            target_radius * 1.5 + 40.0
+        };
+        (r, 0.05) // Low speed circling (0.05 rad/s)
+    } else if target_idx == 0 {
+        (target_radius * 2.5 + 600.0, 0.20)
     } else {
-        target_radius * 1.8 + 80.0
+        (target_radius * 1.8 + 80.0, 0.20)
     };
 
     let target_dir = to_target.normalize_or_zero();
     let rot_decay = 1.0 - (-2.5 * dt).exp();
 
-    if distance <= arrival_dist {
+    if distance <= arrival_dist || autopilot.engine_stopped {
         autopilot.arrived = true;
+        autopilot.engine_stopped = true;
 
-        // Decelerate & enter parking orbit following around target celestial body (Sun or Planet)
-        let orbit_speed = 0.20; // rad/s orbital revolution rate
+        // Decelerate & enter parking low orbit following around target celestial body (Sun or Planet)
         let current_offset = flight_state.world_pos - target_pos;
         let current_dist = current_offset.length();
         let safe_dir = if current_dist > 0.1 { current_offset / current_dist } else { Vec3::Z };
 
+        let lerp_speed = 2.5;
+        let lerp_factor = (lerp_speed * dt).min(1.0);
+        let new_dist = current_dist + (arrival_dist - current_dist) * lerp_factor;
+
         let rot = Quat::from_rotation_y(orbit_speed * dt);
         let new_dir = rot * safe_dir;
-        
-        // Update ship's physical position in orbit around target
-        flight_state.world_pos = target_pos + new_dir * arrival_dist;
 
-        // Set tangential orbital velocity
+        // Update ship's physical position in low orbit around target
+        flight_state.world_pos = target_pos + new_dir * new_dist;
+
+        // Set tangential low orbital velocity
         let tangent = Vec3::Y.cross(new_dir).normalize_or_zero();
-        let orbit_linear_speed = arrival_dist * orbit_speed;
+        let orbit_linear_speed = new_dist * orbit_speed;
         flight_state.velocity = tangent * orbit_linear_speed;
 
         // Turn ship to continuously face towards the target body while orbiting
@@ -290,7 +394,7 @@ pub fn autopilot_flight_system(
 
     let vel_decay = 1.0 - (-2.5 * dt).exp();
     flight_state.velocity = flight_state.velocity.lerp(target_dir * target_speed, vel_decay);
-    
+
     if flight_state.velocity.length() > MAX_SPEED_CAP {
         flight_state.velocity = flight_state.velocity.normalize() * MAX_SPEED_CAP;
     }

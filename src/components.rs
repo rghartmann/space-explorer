@@ -60,6 +60,9 @@ pub struct RadarSweepNeedle;
 #[derive(Component)]
 pub struct AutoPilotHudText;
 
+#[derive(Component)]
+pub struct StopEngineButton;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CelestialTargetType {
     Sun,
@@ -81,6 +84,7 @@ pub enum CockpitButtonType {
     Shields,
     AutoNav,
     Alert,
+    OrbitStop,
 }
 
 #[derive(Component)]

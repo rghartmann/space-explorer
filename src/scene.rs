@@ -58,7 +58,7 @@ pub fn setup_scene(
             ));
 
             parent.spawn((
-                Text::new("FLIGHT CONTROLS: WASD (Thrust: 8,000 km/s²) | SHIFT (Warp Boost: 120,000 km/s²) | Speed Cap: 1.5x c | Q/E (Steer Yaw) | ESC (Exit)"),
+                Text::new("FLIGHT CONTROLS: WASD (Thrust: 8,000 km/s²) | SHIFT (Warp Boost: 120,000 km/s²) | Q/E (Steer Yaw) | [O] Stop Engine & Orbit | ESC (Exit)"),
                 TextFont {
                     font_size: 12.0.into(),
                     ..default()
@@ -68,13 +68,40 @@ pub fn setup_scene(
 
             parent.spawn((
                 AutoPilotHudText,
-                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [0-9] TO ENGAGE AUTOPILOT"),
+                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [0-9] TO ENGAGE AUTOPILOT | PRESS [O] TO STOP ENGINE & ORBIT"),
                 TextFont {
                     font_size: 13.0.into(),
                     ..default()
                 },
                 TextColor(Color::srgb(1.0, 0.85, 0.2)),
             ));
+
+            parent
+                .spawn((
+                    Button,
+                    Node {
+                        padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
+                        margin: UiRect::top(Val::Px(4.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(4.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.8, 0.15, 0.15, 0.75)),
+                    BorderColor::all(Color::srgba(1.0, 0.4, 0.4, 0.9)),
+                    StopEngineButton,
+                ))
+                .with_children(|btn_parent| {
+                    btn_parent.spawn((
+                        Text::new("🛑 STOP ENGINE & ENTER PLANET ORBIT (KEY O)"),
+                        TextFont {
+                            font_size: 13.0.into(),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(1.0, 0.95, 0.9)),
+                    ));
+                });
         });
 
     // 2D NAVIGATION LABELS FOR CELESTIAL BODIES IN THE DISTANCE
@@ -496,7 +523,7 @@ pub fn setup_scene(
 
     let b5_base = commands
         .spawn((
-            Mesh3d(button_base_mesh),
+            Mesh3d(button_base_mesh.clone()),
             MeshMaterial3d(metal_frame_mat.clone()),
             Transform::from_xyz(0.16, 0.13, -0.61)
                 .with_rotation(Quat::from_rotation_x(0.35)),
@@ -511,13 +538,47 @@ pub fn setup_scene(
                 base_emissive: LinearRgba::new(0.9, 0.1, 0.1, 1.0),
                 active_emissive: LinearRgba::new(1.4, 0.2, 0.2, 1.0),
             },
-            Mesh3d(button_cap_mesh),
+            Mesh3d(button_cap_mesh.clone()),
             MeshMaterial3d(btn_alert_mat),
             Transform::from_xyz(0.16, 0.142, -0.61)
                 .with_rotation(Quat::from_rotation_x(0.35)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b5_cap);
+
+    // 6. Orbit Stop Engine Button (Center Console)
+    let btn_orbit_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.9, 0.15, 0.15),
+        emissive: LinearRgba::new(1.0, 0.2, 0.2, 1.0),
+        perceptual_roughness: 0.2,
+        metallic: 0.4,
+        ..default()
+    });
+
+    let b6_base = commands
+        .spawn((
+            Mesh3d(button_base_mesh),
+            MeshMaterial3d(metal_frame_mat.clone()),
+            Transform::from_xyz(0.0, 0.13, -0.61)
+                .with_rotation(Quat::from_rotation_x(0.35)),
+        ))
+        .id();
+    commands.entity(ship_entity).add_child(b6_base);
+
+    let b6_cap = commands
+        .spawn((
+            CockpitButton {
+                button_type: CockpitButtonType::OrbitStop,
+                base_emissive: LinearRgba::new(1.0, 0.2, 0.2, 1.0),
+                active_emissive: LinearRgba::new(1.6, 0.3, 0.3, 1.0),
+            },
+            Mesh3d(button_cap_mesh),
+            MeshMaterial3d(btn_orbit_mat),
+            Transform::from_xyz(0.0, 0.142, -0.61)
+                .with_rotation(Quat::from_rotation_x(0.35)),
+        ))
+        .id();
+    commands.entity(ship_entity).add_child(b6_cap);
 
     // Toggle Switches & LEDs
     let toggle_base_mesh = meshes.add(Cylinder::new(0.007, 0.01));

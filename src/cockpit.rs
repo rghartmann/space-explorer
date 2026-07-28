@@ -54,6 +54,7 @@ pub fn animate_cockpit_buttons_system(
                 CockpitButtonType::AutoNav => is_steering || autopilot.active,
                 CockpitButtonType::Shields => true,
                 CockpitButtonType::Alert => is_boosting,
+                CockpitButtonType::OrbitStop => autopilot.engine_stopped,
             };
 
             let target = if active {
@@ -81,7 +82,7 @@ pub fn update_hud_system(
 ) {
     let speed = flight_state.velocity.length();
     let speed_of_light = 299_792.458;
-    
+
     let speed_str = if speed > speed_of_light {
         format!("{:.0} km/s ({:.2}x c - FTL WARP)", speed, speed / speed_of_light)
     } else if speed > 1000.0 {
@@ -109,10 +110,12 @@ pub fn update_hud_system(
                     }
                 }
 
-                let status_label = if autopilot.arrived {
+                let status_label = if autopilot.engine_stopped {
+                    "ENGINE STOPPED - LOW PLANETARY ORBIT (SLOW CIRCLING)"
+                } else if autopilot.arrived {
                     "PARKING ORBIT REACHED"
                 } else {
-                    "EN ROUTE"
+                    "EN ROUTE (CAMERA FOCUS ENGAGED)"
                 };
 
                 **text = format!(
@@ -126,7 +129,7 @@ pub fn update_hud_system(
             }
         } else {
             **text = format!(
-                "FLIGHT STATUS: MANUAL CONTROL | SPEED: {} | PRESS [0-9] TO ENGAGE AUTOPILOT",
+                "FLIGHT STATUS: MANUAL CONTROL | SPEED: {} | PRESS [0-9] TO ENGAGE AUTOPILOT | PRESS [O] TO STOP ENGINE & ORBIT",
                 speed_str
             );
         }
