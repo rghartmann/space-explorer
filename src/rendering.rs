@@ -102,9 +102,9 @@ pub fn logarithmic_distance_render_system(
 
     let cam_pos = flight_state.world_pos + ship_transform.rotation * cam_transform.translation;
 
-    let k = 0.000035;
-    let scale_const = 6500.0;
-    let transition_dist = 6000.0;
+    let k = 0.0000035;
+    let scale_const = 25000.0;
+    let transition_dist = 50000.0;
 
     // Render Sun
     for (sun, mut transform, mut vis) in &mut sun_query {

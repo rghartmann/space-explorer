@@ -14,7 +14,7 @@ use bevy::window::WindowMode;
 
 use audio::engine_sound_system;
 use flight::{
-    autopilot_flight_system, autopilot_input_system, celestial_collision_system, hide_cursor_system,
+    autopilot_flight_system, autopilot_input_system, autopilot_pathfinding_system, celestial_collision_system, hide_cursor_system,
     orbit_asteroids_system, orbit_moons_system, orbit_planets_system, pilot_freelook_system,
     ship_flight_system, stop_engine_input_system,
 };
@@ -60,6 +60,7 @@ fn main() {
                 (
                     (orbit_planets_system, orbit_moons_system, orbit_asteroids_system),
                     (autopilot_input_system, stop_engine_input_system),
+                    autopilot_pathfinding_system,
                     autopilot_flight_system,
                     ship_flight_system,
                     celestial_collision_system,

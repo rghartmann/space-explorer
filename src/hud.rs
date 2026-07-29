@@ -6,6 +6,30 @@ use crate::components::{
 };
 use crate::resources::{AutoPilotState, FlightState};
 
+pub fn format_dual_space_distance(dist_km: f32) -> String {
+    let au = dist_km / 149_597_870.7;
+    if dist_km >= 149_597_870.7 * 0.1 {
+        format!("{:.2} AU ({:.1}M km)", au, dist_km / 1_000_000.0)
+    } else if dist_km >= 1_000_000.0 {
+        format!("{:.3} AU ({:.2}M km)", au, dist_km / 1_000_000.0)
+    } else if dist_km >= 10_000.0 {
+        format!("{:.4} AU ({:.0} km)", au, dist_km)
+    } else {
+        format!("{:.5} AU ({:.0} km)", au, dist_km)
+    }
+}
+
+pub fn format_dual_space_distance_compact(dist_km: f32) -> String {
+    let au = dist_km / 149_597_870.7;
+    if dist_km >= 149_597_870.7 * 0.05 {
+        format!("{:.2}AU ({:.0}M km)", au, dist_km / 1_000_000.0)
+    } else if dist_km >= 100_000.0 {
+        format!("{:.3}AU ({:.0}k km)", au, dist_km / 1_000.0)
+    } else {
+        format!("{:.4}AU ({:.0} km)", au, dist_km)
+    }
+}
+
 pub fn exit_on_esc(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut app_exit: MessageWriter<AppExit>,
@@ -69,13 +93,13 @@ pub fn update_hud_system(
 
                 if let Some(dest_pos) = dest_world_pos {
                     let dist = flight_state.world_pos.distance(dest_pos);
-                    dist_str = format!("{:.0} km", dist * 10.0);
+                    dist_str = format_dual_space_distance(dist);
                 }
 
                 let eta_str = if is_in_orbit || autopilot.arrived || autopilot.engine_stopped {
                     "ARRIVED".to_string()
                 } else if let Some(dest_pos) = dest_world_pos {
-                    let dist_km = flight_state.world_pos.distance(dest_pos) * 10.0;
+                    let dist_km = flight_state.world_pos.distance(dest_pos);
                     if speed < 0.1 {
                         "N/A".to_string()
                     } else {
@@ -236,11 +260,7 @@ pub fn update_celestial_labels_system(
                 && viewport_pos.x <= win_w - margin
                 && viewport_pos.y <= win_h - margin
             {
-                let dist_str = if real_dist > 100_000.0 {
-                    format!("{:.2}M km", (real_dist * 10.0) / 1_000_000.0)
-                } else {
-                    format!("{:.0} km", real_dist * 10.0)
-                };
+                let dist_str = format_dual_space_distance_compact(real_dist);
 
                 let text_content = format!("{}{} {}", label.key_prefix, label.name.to_uppercase(), dist_str);
 
@@ -250,7 +270,7 @@ pub fn update_celestial_labels_system(
                     }
                 }
 
-                let label_width = (text_content.len() as f32 * 6.8 + 14.0).clamp(95.0, 220.0);
+                let label_width = (text_content.len() as f32 * 6.8 + 14.0).clamp(110.0, 260.0);
                 let label_height = 20.0;
 
                 visible_labels.push(VisibleLabelData {
@@ -382,5 +402,31 @@ pub fn update_celestial_labels_system(
         } else {
             *vis = Visibility::Hidden;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_dual_space_distance() {
+        let earth_sun_dist = 149_597_870.7; // 1.00 AU
+        let formatted = format_dual_space_distance(earth_sun_dist);
+        assert!(formatted.contains("1.00 AU"), "Formatted distance should contain '1.00 AU' (got '{formatted}')");
+        assert!(formatted.contains("149.6M km"), "Formatted distance should contain '(149.6M km)' (got '{formatted}')");
+
+        let near_dist = 384_400.0; // Moon orbit distance
+        let formatted_near = format_dual_space_distance(near_dist);
+        assert!(formatted_near.contains("AU"), "Formatted distance should contain AU (got '{formatted_near}')");
+        assert!(formatted_near.contains("384400 km"), "Formatted distance should contain '384400 km' (got '{formatted_near}')");
+    }
+
+    #[test]
+    fn test_format_dual_space_distance_compact() {
+        let earth_sun_dist = 149_597_870.7;
+        let compact = format_dual_space_distance_compact(earth_sun_dist);
+        assert!(compact.contains("1.00AU"), "Compact distance should contain '1.00AU' (got '{compact}')");
+        assert!(compact.contains("150M km"), "Compact distance should contain '150M km' (got '{compact}')");
     }
 }

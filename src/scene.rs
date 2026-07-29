@@ -197,13 +197,12 @@ pub fn setup_scene(
     // SHIP AVATAR & 3RD-PERSON CAMERA PERSPECTIVE
     // ----------------------------------------------------
     // ----------------------------------------------------
+    // ----------------------------------------------------
     // SHIP AVATAR & 3RD-PERSON CAMERA PERSPECTIVE
     // ----------------------------------------------------
-    // Calculate initial ship position near Earth facing the Sun at Vec3::ZERO
-    let temp_earth_radius = 1.000000 * 240_000.0;
-    let temp_earth_angle = next_orbit_angle();
-    let temp_earth_pos = Vec3::new(temp_earth_radius * temp_earth_angle.cos(), 0.0, temp_earth_radius * temp_earth_angle.sin());
-    let initial_spawn_pos = temp_earth_pos + Vec3::new(8_000.0, 400.0, 2_500.0);
+    // Calculate initial deep-space ship spawn position (~5.2 AU / 1.25M km from Sun) facing Sun at Vec3::ZERO
+    let initial_spawn_dist = 5.200000 * 240_000.0; // 1,248,000 km deep space vantage point
+    let initial_spawn_pos = Vec3::new(initial_spawn_dist * 0.7071, 150_000.0, initial_spawn_dist * 0.7071);
     let dir_to_sun = (Vec3::ZERO - initial_spawn_pos).normalize_or_zero();
     let initial_ship_rot = Quat::from_rotation_arc(Vec3::NEG_Z, dir_to_sun);
 
@@ -215,7 +214,7 @@ pub fn setup_scene(
         ))
         .id();
 
-    // 3D Spaceship Avatar (Scaled down to 0.14, nose pointing forward -Z into space)
+    // 3D Spaceship Avatar (Scaled to ~0.050 km / 50m length for modern manned spacecraft like SpaceX Starship)
     let avatar_entity = commands
         .spawn((
             WorldAssetRoot(asset_server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset("models/spaceship.glb"))),
@@ -251,14 +250,14 @@ pub fn setup_scene(
             },
             Projection::Perspective(PerspectiveProjection {
                 near: 0.1,
-                far: 150_000.0,
+                far: 10_000_000.0,
                 ..default()
             }),
             Transform::from_xyz(0.0, 1.2, 4.0)
                 .looking_at(Vec3::new(0.0, 0.1, -5.0), Vec3::Y),
             DistanceFog {
                 color: Color::srgba(0.0005, 0.001, 0.003, 1.0),
-                falloff: FogFalloff::Exponential { density: 0.0000005 },
+                falloff: FogFalloff::Exponential { density: 0.0000001 },
                 ..default()
             },
         ))
@@ -292,7 +291,7 @@ pub fn setup_scene(
     // Dynamic Sunlight (Cascaded Directional Shadow Light)
     let cascade_config = CascadeShadowConfigBuilder {
         num_cascades: 4,
-        maximum_distance: 30_000.0,
+        maximum_distance: 300_000.0,
         minimum_distance: 0.1,
         first_cascade_far_bound: 15.0,
         overlap_proportion: 0.2,
@@ -316,7 +315,7 @@ pub fn setup_scene(
     // 2. THE SUN (NASA HIGH-RES RADIANT SURFACE & COLOSSAL SOLAR CORONA)
     // ----------------------------------------------------
     let sun_tex: Handle<Image> = asset_server.load("textures/sun.jpg");
-    let sun_mesh = meshes.add(create_uv_sphere(32790.0, 192, 96));
+    let sun_mesh = meshes.add(create_uv_sphere(696340.0, 192, 96));
     let sun_mat = materials.add(StandardMaterial {
         base_color_texture: Some(sun_tex.clone()),
         emissive_texture: Some(sun_tex),
@@ -326,14 +325,14 @@ pub fn setup_scene(
     });
 
     let sun_entity = commands.spawn((
-        Sun { radius: 32790.0 },
+        Sun { radius: 696340.0 },
         Mesh3d(sun_mesh),
         MeshMaterial3d(sun_mat),
         Transform::from_xyz(0.0, 0.0, 0.0),
     )).id();
 
     // Solar Corona Glow Atmosphere
-    let corona_mesh = meshes.add(create_uv_sphere(43720.0, 32, 16));
+    let corona_mesh = meshes.add(create_uv_sphere(928450.0, 32, 16));
     let corona_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(1.0, 0.65, 0.15, 0.35),
         alpha_mode: AlphaMode::Blend,
@@ -360,16 +359,16 @@ pub fn setup_scene(
     ));
 
     // ----------------------------------------------------
-    // 3. PLANETS, DWARF PLANETS & MOONS (TITANIC MASSIVE SCALES & REALISTIC SLOW ROTATION)
+    // 3. PLANETS, DWARF PLANETS & MOONS (REAL 1:1 KILOMETER SCALES & REALISTIC ROTATIONS)
     // ----------------------------------------------------
 
     // --- PLANET 1: MERCURY (0.3871 AU) ---
     let mercury_orbit_radius = 0.387098 * 240_000.0; // 92,903.52 km
-    let mercury_orbit_speed = 0.15;
+    let mercury_orbit_speed = 0.6225; // 4.15x Earth speed
     let mercury_angle = next_orbit_angle();
     let mercury_pos = Vec3::new(mercury_orbit_radius * mercury_angle.cos(), 0.0, mercury_orbit_radius * mercury_angle.sin());
     let mercury_tex: Handle<Image> = asset_server.load("textures/mercury.jpg");
-    let mercury_mesh = meshes.add(create_uv_sphere(114.9, 192, 96));
+    let mercury_mesh = meshes.add(create_uv_sphere(2439.7, 192, 96));
     let mercury_mat = materials.add(StandardMaterial {
         base_color_texture: Some(mercury_tex.clone()),
         perceptual_roughness: 0.9,
@@ -379,27 +378,27 @@ pub fn setup_scene(
         Planet {
             name: "Mercury",
             index: 1,
-            radius: 114.9,
+            radius: 2439.7,
             orbit_radius: mercury_orbit_radius,
             orbit_speed: mercury_orbit_speed,
             orbit_angle: mercury_angle,
-            rotation_speed: 0.0012,
+            rotation_speed: 0.00005, // 58.65d spin
             world_pos: mercury_pos,
         },
-        PlanetLod::new(1, false, "", 6.0, mercury_tex.clone(), 192, 96),
+        PlanetLod::new(1, false, "", 15.0, mercury_tex.clone(), 192, 96),
         Mesh3d(mercury_mesh),
         MeshMaterial3d(mercury_mat),
         Transform::from_translation(mercury_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, mercury_entity, mercury_pos, 114.9);
+    spawn_planet_area_light(&mut commands, mercury_entity, mercury_pos, 2439.7);
 
     // --- PLANET 2: VENUS (0.7233 AU) ---
     let venus_orbit_radius = 0.723332 * 240_000.0; // 173,599.68 km
-    let venus_orbit_speed = 0.11;
+    let venus_orbit_speed = 0.2437; // 1.625x Earth speed
     let venus_angle = next_orbit_angle();
     let venus_pos = Vec3::new(venus_orbit_radius * venus_angle.cos(), 0.0, venus_orbit_radius * venus_angle.sin());
     let venus_tex: Handle<Image> = asset_server.load("textures/venus.jpg");
-    let venus_mesh = meshes.add(create_uv_sphere(285.0, 256, 128));
+    let venus_mesh = meshes.add(create_uv_sphere(6051.8, 256, 128));
     let venus_mat = materials.add(StandardMaterial {
         base_color_texture: Some(venus_tex.clone()),
         perceptual_roughness: 0.4,
@@ -409,22 +408,22 @@ pub fn setup_scene(
         Planet {
             name: "Venus",
             index: 2,
-            radius: 285.0,
+            radius: 6051.8,
             orbit_radius: venus_orbit_radius,
             orbit_speed: venus_orbit_speed,
             orbit_angle: venus_angle,
-            rotation_speed: -0.0006,
+            rotation_speed: -0.000012, // Retrograde spin 243.0d
             world_pos: venus_pos,
         },
-        PlanetLod::new(2, false, "", 8.0, venus_tex.clone(), 256, 128),
+        PlanetLod::new(2, false, "", 20.0, venus_tex.clone(), 256, 128),
         Mesh3d(venus_mesh),
         MeshMaterial3d(venus_mat),
         Transform::from_translation(venus_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, venus_entity, venus_pos, 285.0);
+    spawn_planet_area_light(&mut commands, venus_entity, venus_pos, 6051.8);
 
     // Venus Atmospheric Scattering Shell
-    let venus_atmo_mesh = meshes.add(create_uv_sphere(292.0, 96, 48));
+    let venus_atmo_mesh = meshes.add(create_uv_sphere(6200.0, 96, 48));
     let venus_atmo_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(0.9, 0.75, 0.4, 0.28),
         emissive: LinearRgba::new(2.5, 1.8, 0.5, 1.0),
@@ -441,12 +440,12 @@ pub fn setup_scene(
     commands.entity(venus_entity).add_child(venus_atmo);
 
     // --- PLANET 3: EARTH & MOON (1.0000 AU) ---
-    let earth_orbit_radius = temp_earth_radius;
-    let earth_orbit_speed = 0.08;
-    let earth_angle = temp_earth_angle;
-    let earth_pos = temp_earth_pos;
+    let earth_orbit_radius = 1.000000 * 240_000.0;
+    let earth_orbit_speed = 0.15; // 1.000x Earth base speed
+    let earth_angle = next_orbit_angle();
+    let earth_pos = Vec3::new(earth_orbit_radius * earth_angle.cos(), 0.0, earth_orbit_radius * earth_angle.sin());
     let earth_tex: Handle<Image> = asset_server.load("textures/earth.jpg");
-    let earth_mesh = meshes.add(create_uv_sphere(300.0, 256, 128));
+    let earth_mesh = meshes.add(create_uv_sphere(6371.0, 256, 128));
     let earth_mat = materials.add(StandardMaterial {
         base_color_texture: Some(earth_tex.clone()),
         emissive_texture: Some(earth_tex.clone()),
@@ -461,22 +460,22 @@ pub fn setup_scene(
         Planet {
             name: "Earth",
             index: 3,
-            radius: 300.0,
+            radius: 6371.0,
             orbit_radius: earth_orbit_radius,
             orbit_speed: earth_orbit_speed,
             orbit_angle: earth_angle,
-            rotation_speed: 0.003,
+            rotation_speed: 0.00300, // 23.93h sidereal spin
             world_pos: earth_pos,
         },
-        PlanetLod::new(3, false, "", 10.0, earth_tex.clone(), 256, 128),
+        PlanetLod::new(3, false, "", 25.0, earth_tex.clone(), 256, 128),
         Mesh3d(earth_mesh),
         MeshMaterial3d(earth_mat),
         Transform::from_translation(earth_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, earth_entity, earth_pos, 300.0);
+    spawn_planet_area_light(&mut commands, earth_entity, earth_pos, 6371.0);
 
     // Earth Atmospheric Rayleigh Scattering Glow Shell
-    let earth_atmo_mesh = meshes.add(create_uv_sphere(307.5, 128, 64));
+    let earth_atmo_mesh = meshes.add(create_uv_sphere(6530.0, 128, 64));
     let earth_atmo_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(0.2, 0.55, 1.0, 0.35),
         emissive: LinearRgba::new(0.8, 2.5, 6.0, 1.0),
@@ -498,12 +497,12 @@ pub fn setup_scene(
     flight_state.previous_pos = flight_state.world_pos;
 
     // Earth's Moon (NASA 2K Texture)
-    let moon_orbit_radius = 1800.0;
+    let moon_orbit_radius = 38440.0; // 384,400 km orbit
     let moon_orbit_speed = 0.25;
     let moon_angle = next_orbit_angle();
     let moon_pos = earth_pos + Vec3::new(moon_orbit_radius * moon_angle.cos(), 0.0, moon_orbit_radius * moon_angle.sin());
     let moon_tex: Handle<Image> = asset_server.load("textures/moon.jpg");
-    let moon_mesh = meshes.add(create_uv_sphere(81.8, 192, 96));
+    let moon_mesh = meshes.add(create_uv_sphere(1737.4, 192, 96));
     let moon_mat = materials.add(StandardMaterial {
         base_color_texture: Some(moon_tex.clone()),
         perceptual_roughness: 0.85,
@@ -513,28 +512,27 @@ pub fn setup_scene(
         Moon {
             name: "Moon",
             parent_index: 3,
-            radius: 81.8,
+            radius: 1737.4,
             orbit_radius: moon_orbit_radius,
             orbit_speed: moon_orbit_speed,
             orbit_angle: moon_angle,
-            rotation_speed: 0.0012,
+            rotation_speed: 0.00011, // Tidally locked
             world_pos: moon_pos,
         },
-        PlanetLod::new(3, true, "Moon", 5.0, moon_tex.clone(), 192, 96),
+        PlanetLod::new(3, true, "Moon", 12.5, moon_tex.clone(), 192, 96),
         Mesh3d(moon_mesh),
         MeshMaterial3d(moon_mat),
         Transform::from_translation(moon_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, moon_entity, moon_pos, 81.8);
-    spawn_planet_area_light(&mut commands, moon_entity, moon_pos, 81.8);
+    spawn_planet_area_light(&mut commands, moon_entity, moon_pos, 1737.4);
 
     // --- PLANET 4: MARS (1.5237 AU) ---
     let mars_orbit_radius = 1.523680 * 240_000.0; // 365,683.20 km
-    let mars_orbit_speed = 0.06;
+    let mars_orbit_speed = 0.07965; // 0.531x Earth speed
     let mars_angle = next_orbit_angle();
     let mars_pos = Vec3::new(mars_orbit_radius * mars_angle.cos(), 0.0, mars_orbit_radius * mars_angle.sin());
     let mars_tex: Handle<Image> = asset_server.load("textures/mars.jpg");
-    let mars_mesh = meshes.add(create_uv_sphere(159.6, 256, 128));
+    let mars_mesh = meshes.add(create_uv_sphere(3389.5, 256, 128));
     let mars_mat = materials.add(StandardMaterial {
         base_color_texture: Some(mars_tex.clone()),
         perceptual_roughness: 0.75,
@@ -544,27 +542,27 @@ pub fn setup_scene(
         Planet {
             name: "Mars",
             index: 4,
-            radius: 159.6,
+            radius: 3389.5,
             orbit_radius: mars_orbit_radius,
             orbit_speed: mars_orbit_speed,
             orbit_angle: mars_angle,
-            rotation_speed: 0.003,
+            rotation_speed: 0.00292, // 24.62h spin
             world_pos: mars_pos,
         },
-        PlanetLod::new(4, false, "", 9.0, mars_tex.clone(), 256, 128),
+        PlanetLod::new(4, false, "", 22.5, mars_tex.clone(), 256, 128),
         Mesh3d(mars_mesh),
         MeshMaterial3d(mars_mat),
         Transform::from_translation(mars_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, mars_entity, mars_pos, 159.6);
+    spawn_planet_area_light(&mut commands, mars_entity, mars_pos, 3389.5);
 
     // --- DWARF PLANET 1: CERES (2.767 AU - MAIN ASTEROID BELT) ---
     let ceres_orbit_radius = 2.767000 * 240_000.0; // 664,080.00 km
-    let ceres_orbit_speed = 0.07;
+    let ceres_orbit_speed = 0.0325; // 0.217x Earth speed
     let ceres_angle = next_orbit_angle();
     let ceres_pos = Vec3::new(ceres_orbit_radius * ceres_angle.cos(), 0.0, ceres_orbit_radius * ceres_angle.sin());
     let ceres_tex: Handle<Image> = asset_server.load("textures/ceres.jpg");
-    let ceres_mesh = meshes.add(create_uv_sphere(22.3, 192, 96));
+    let ceres_mesh = meshes.add(create_uv_sphere(473.0, 192, 96));
     let ceres_mat = materials.add(StandardMaterial {
         base_color_texture: Some(ceres_tex.clone()),
         perceptual_roughness: 0.85,
@@ -574,19 +572,19 @@ pub fn setup_scene(
         Planet {
             name: "Ceres",
             index: 10,
-            radius: 22.3,
+            radius: 473.0,
             orbit_radius: ceres_orbit_radius,
             orbit_speed: ceres_orbit_speed,
             orbit_angle: ceres_angle,
-            rotation_speed: 0.0035,
+            rotation_speed: 0.00793, // 9.07h spin
             world_pos: ceres_pos,
         },
-        PlanetLod::new(10, false, "", 3.0, ceres_tex.clone(), 192, 96),
+        PlanetLod::new(10, false, "", 7.5, ceres_tex.clone(), 192, 96),
         Mesh3d(ceres_mesh),
         MeshMaterial3d(ceres_mat),
-        Transform::from_translation(ceres_pos),
+        Transform::from_translation(ceres_pos).with_scale(Vec3::new(1.0, 0.923, 1.0)),
     )).id();
-    spawn_planet_area_light(&mut commands, ceres_entity, ceres_pos, 22.3);
+    spawn_planet_area_light(&mut commands, ceres_entity, ceres_pos, 473.0);
 
     // --- MAIN ASTEROID BELT (2.1 AU to 3.3 AU: ~500,000 - ~800,000 KM) ---
     let asteroid_tex: Handle<Image> = asset_server.load("textures/asteroid.jpg");
@@ -636,7 +634,7 @@ pub fn setup_scene(
         let ast_pos = Vec3::new(ast_x, y_offset, ast_z);
 
         belt_rng = belt_rng.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let ast_radius = 8.0 + (belt_rng as f32 / u64::MAX as f32) * 32.0;
+        let ast_radius = 20.0 + (belt_rng as f32 / u64::MAX as f32) * 80.0;
 
         belt_rng = belt_rng.wrapping_mul(6364136223846793005).wrapping_add(1);
         let rx = (belt_rng as f32 / u64::MAX as f32) * 2.0 - 1.0;
@@ -666,11 +664,11 @@ pub fn setup_scene(
 
     // --- PLANET 5: JUPITER & GALILEAN MOONS (5.2044 AU) ---
     let jupiter_orbit_radius = 5.204400 * 240_000.0; // 1,249,056.00 km
-    let jupiter_orbit_speed = 0.035;
+    let jupiter_orbit_speed = 0.012645; // 0.0843x Earth speed
     let jupiter_angle = next_orbit_angle();
     let jupiter_pos = Vec3::new(jupiter_orbit_radius * jupiter_angle.cos(), 0.0, jupiter_orbit_radius * jupiter_angle.sin());
     let jupiter_tex: Handle<Image> = asset_server.load("textures/jupiter.jpg");
-    let jupiter_mesh = meshes.add(create_uv_sphere(3292.0, 384, 192));
+    let jupiter_mesh = meshes.add(create_uv_sphere(69911.0, 384, 192));
     let jupiter_mat = materials.add(StandardMaterial {
         base_color_texture: Some(jupiter_tex.clone()),
         perceptual_roughness: 0.5,
@@ -680,26 +678,26 @@ pub fn setup_scene(
         Planet {
             name: "Jupiter",
             index: 5,
-            radius: 3292.0,
+            radius: 69911.0,
             orbit_radius: jupiter_orbit_radius,
             orbit_speed: jupiter_orbit_speed,
             orbit_angle: jupiter_angle,
-            rotation_speed: 0.006,
+            rotation_speed: 0.00726, // 9.92h fast spin
             world_pos: jupiter_pos,
         },
-        PlanetLod::new(5, false, "", 16.0, jupiter_tex.clone(), 384, 192),
+        PlanetLod::new(5, false, "", 40.0, jupiter_tex.clone(), 384, 192),
         Mesh3d(jupiter_mesh),
         MeshMaterial3d(jupiter_mat),
-        Transform::from_translation(jupiter_pos),
+        Transform::from_translation(jupiter_pos).with_scale(Vec3::new(1.0, 0.935, 1.0)), // Oblate Spheroid (f=0.0649)
     )).id();
-    spawn_planet_area_light(&mut commands, jupiter_entity, jupiter_pos, 3292.0);
+    spawn_planet_area_light(&mut commands, jupiter_entity, jupiter_pos, 69911.0);
 
     // Io
-    let io_orbit_radius = 19800.0;
+    let io_orbit_radius = 120000.0;
     let io_orbit_speed = 0.45;
     let io_angle = next_orbit_angle();
     let io_pos = jupiter_pos + Vec3::new(io_orbit_radius * io_angle.cos(), 0.0, io_orbit_radius * io_angle.sin());
-    let io_mesh = meshes.add(create_uv_sphere(85.8, 192, 96));
+    let io_mesh = meshes.add(create_uv_sphere(1821.6, 192, 96));
     let io_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.9, 0.85, 0.2),
         perceptual_roughness: 0.7,
@@ -709,26 +707,26 @@ pub fn setup_scene(
         Moon {
             name: "Io",
             parent_index: 5,
-            radius: 85.8,
+            radius: 1821.6,
             orbit_radius: io_orbit_radius,
             orbit_speed: io_orbit_speed,
             orbit_angle: io_angle,
-            rotation_speed: 0.0025,
+            rotation_speed: 0.00169, // Tidally locked
             world_pos: io_pos,
         },
-        PlanetLod::new(5, true, "Io", 4.5, jupiter_tex.clone(), 192, 96),
+        PlanetLod::new(5, true, "Io", 11.25, jupiter_tex.clone(), 192, 96),
         Mesh3d(io_mesh),
         MeshMaterial3d(io_mat),
         Transform::from_translation(io_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, io_entity, io_pos, 85.8);
+    spawn_planet_area_light(&mut commands, io_entity, io_pos, 1821.6);
 
     // Europa
-    let europa_orbit_radius = 31600.0;
+    let europa_orbit_radius = 190000.0;
     let europa_orbit_speed = 0.32;
     let europa_angle = next_orbit_angle();
     let europa_pos = jupiter_pos + Vec3::new(europa_orbit_radius * europa_angle.cos(), 0.0, europa_orbit_radius * europa_angle.sin());
-    let europa_mesh = meshes.add(create_uv_sphere(73.5, 192, 96));
+    let europa_mesh = meshes.add(create_uv_sphere(1560.8, 192, 96));
     let europa_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.85, 0.88, 0.95),
         perceptual_roughness: 0.2,
@@ -739,27 +737,27 @@ pub fn setup_scene(
         Moon {
             name: "Europa",
             parent_index: 5,
-            radius: 73.5,
+            radius: 1560.8,
             orbit_radius: europa_orbit_radius,
             orbit_speed: europa_orbit_speed,
             orbit_angle: europa_angle,
-            rotation_speed: 0.0022,
+            rotation_speed: 0.00084, // Tidally locked
             world_pos: europa_pos,
         },
-        PlanetLod::new(5, true, "Europa", 3.5, jupiter_tex.clone(), 192, 96),
+        PlanetLod::new(5, true, "Europa", 8.75, jupiter_tex.clone(), 192, 96),
         Mesh3d(europa_mesh),
         MeshMaterial3d(europa_mat),
         Transform::from_translation(europa_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, europa_entity, europa_pos, 73.5);
+    spawn_planet_area_light(&mut commands, europa_entity, europa_pos, 1560.8);
 
     // --- PLANET 6: SATURN & REALISTIC 2D RING SYSTEM WITH DUST & ROCKS (9.5826 AU) ---
     let saturn_orbit_radius = 9.582600 * 240_000.0; // 2,299,824.00 km
-    let saturn_orbit_speed = 0.02;
+    let saturn_orbit_speed = 0.005085; // 0.0339x Earth speed
     let saturn_angle = next_orbit_angle();
     let saturn_pos = Vec3::new(saturn_orbit_radius * saturn_angle.cos(), 0.0, saturn_orbit_radius * saturn_angle.sin());
     let saturn_tex: Handle<Image> = asset_server.load("textures/saturn.jpg");
-    let saturn_mesh = meshes.add(create_uv_sphere(2742.0, 384, 192));
+    let saturn_mesh = meshes.add(create_uv_sphere(58232.0, 384, 192));
     let saturn_mat = materials.add(StandardMaterial {
         base_color_texture: Some(saturn_tex.clone()),
         perceptual_roughness: 0.45,
@@ -770,24 +768,24 @@ pub fn setup_scene(
             Planet {
                 name: "Saturn",
                 index: 6,
-                radius: 2742.0,
+                radius: 58232.0,
                 orbit_radius: saturn_orbit_radius,
                 orbit_speed: saturn_orbit_speed,
                 orbit_angle: saturn_angle,
-                rotation_speed: 0.0055,
+                rotation_speed: 0.00683, // 10.55h spin
                 world_pos: saturn_pos,
             },
-            PlanetLod::new(6, false, "", 14.0, saturn_tex.clone(), 384, 192),
+            PlanetLod::new(6, false, "", 35.0, saturn_tex.clone(), 384, 192),
             Mesh3d(saturn_mesh),
             MeshMaterial3d(saturn_mat),
-            Transform::from_translation(saturn_pos),
+            Transform::from_translation(saturn_pos).with_scale(Vec3::new(1.0, 0.902, 1.0)), // Oblate Spheroid (f=0.0980)
         ))
         .id();
-    spawn_planet_area_light(&mut commands, saturn_entity, saturn_pos, 2742.0);
+    spawn_planet_area_light(&mut commands, saturn_entity, saturn_pos, 58232.0);
 
-    // Saturn Ring System (Transparent 2D Ring Plane Disk with Radial Texture)
+    // Saturn Ring System (Transparent 2D Ring Plane Disk with Radial Texture: Real 74,500 km to 136,775 km boundary)
     let saturn_ring_tex: Handle<Image> = asset_server.load("textures/saturn_ring.png");
-    let ring_plane_mesh = meshes.add(create_flat_ring_mesh(3290.4, 6306.6, 256, 16));
+    let ring_plane_mesh = meshes.add(create_flat_ring_mesh(74500.0, 136775.0, 256, 16));
     let ring_mat = materials.add(StandardMaterial {
         base_color_texture: Some(saturn_ring_tex.clone()),
         emissive_texture: Some(saturn_ring_tex.clone()),
@@ -825,13 +823,13 @@ pub fn setup_scene(
         let angle = (ring_rng as f32 / u64::MAX as f32) * std::f32::consts::TAU;
 
         ring_rng = ring_rng.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let rad = 3350.0 + (ring_rng as f32 / u64::MAX as f32) * 2800.0;
+        let rad = 76000.0 + (ring_rng as f32 / u64::MAX as f32) * 58000.0;
 
         ring_rng = ring_rng.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let y_off = ((ring_rng as f32 / u64::MAX as f32) * 2.0 - 1.0) * 12.0;
+        let y_off = ((ring_rng as f32 / u64::MAX as f32) * 2.0 - 1.0) * 30.0;
 
         ring_rng = ring_rng.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let rock_scale = 3.0 + (ring_rng as f32 / u64::MAX as f32) * 12.0;
+        let rock_scale = 7.5 + (ring_rng as f32 / u64::MAX as f32) * 30.0;
 
         let local_pos = Vec3::new(angle.cos() * rad, y_off, angle.sin() * rad);
         let tilted_pos = ring_tilt * local_pos;
@@ -848,11 +846,11 @@ pub fn setup_scene(
 
     // --- PLANET 7: URANUS (19.201 AU) ---
     let uranus_orbit_radius = 19.201000 * 240_000.0; // 4,608,240.00 km
-    let uranus_orbit_speed = 0.012;
+    let uranus_orbit_speed = 0.001785; // 0.0119x Earth speed
     let uranus_angle = next_orbit_angle();
     let uranus_pos = Vec3::new(uranus_orbit_radius * uranus_angle.cos(), 0.0, uranus_orbit_radius * uranus_angle.sin());
     let uranus_tex: Handle<Image> = asset_server.load("textures/uranus.jpg");
-    let uranus_mesh = meshes.add(create_uv_sphere(1194.3, 256, 128));
+    let uranus_mesh = meshes.add(create_uv_sphere(25362.0, 256, 128));
     let uranus_mat = materials.add(StandardMaterial {
         base_color_texture: Some(uranus_tex.clone()),
         perceptual_roughness: 0.3,
@@ -862,27 +860,27 @@ pub fn setup_scene(
         Planet {
             name: "Uranus",
             index: 7,
-            radius: 1194.3,
+            radius: 25362.0,
             orbit_radius: uranus_orbit_radius,
             orbit_speed: uranus_orbit_speed,
             orbit_angle: uranus_angle,
-            rotation_speed: -0.0045,
+            rotation_speed: -0.00418, // Retrograde spin 17.24h
             world_pos: uranus_pos,
         },
-        PlanetLod::new(7, false, "", 8.0, uranus_tex.clone(), 256, 128),
+        PlanetLod::new(7, false, "", 20.0, uranus_tex.clone(), 256, 128),
         Mesh3d(uranus_mesh),
         MeshMaterial3d(uranus_mat),
-        Transform::from_translation(uranus_pos),
+        Transform::from_translation(uranus_pos).with_scale(Vec3::new(1.0, 0.977, 1.0)),
     )).id();
-    spawn_planet_area_light(&mut commands, uranus_entity, uranus_pos, 1194.3);
+    spawn_planet_area_light(&mut commands, uranus_entity, uranus_pos, 25362.0);
 
     // --- PLANET 8: NEPTUNE (30.047 AU) ---
     let neptune_orbit_radius = 30.047000 * 240_000.0; // 7,211,280.00 km
-    let neptune_orbit_speed = 0.007;
+    let neptune_orbit_speed = 0.000915; // 0.0061x Earth speed
     let neptune_angle = next_orbit_angle();
     let neptune_pos = Vec3::new(neptune_orbit_radius * neptune_angle.cos(), 0.0, neptune_orbit_radius * neptune_angle.sin());
     let neptune_tex: Handle<Image> = asset_server.load("textures/neptune.jpg");
-    let neptune_mesh = meshes.add(create_uv_sphere(1159.4, 256, 128));
+    let neptune_mesh = meshes.add(create_uv_sphere(24622.0, 256, 128));
     let neptune_mat = materials.add(StandardMaterial {
         base_color_texture: Some(neptune_tex.clone()),
         perceptual_roughness: 0.25,
@@ -892,27 +890,27 @@ pub fn setup_scene(
         Planet {
             name: "Neptune",
             index: 8,
-            radius: 1159.4,
+            radius: 24622.0,
             orbit_radius: neptune_orbit_radius,
             orbit_speed: neptune_orbit_speed,
             orbit_angle: neptune_angle,
-            rotation_speed: 0.005,
+            rotation_speed: 0.00447, // 16.11h spin
             world_pos: neptune_pos,
         },
-        PlanetLod::new(8, false, "", 8.0, neptune_tex.clone(), 256, 128),
+        PlanetLod::new(8, false, "", 20.0, neptune_tex.clone(), 256, 128),
         Mesh3d(neptune_mesh),
         MeshMaterial3d(neptune_mat),
-        Transform::from_translation(neptune_pos),
+        Transform::from_translation(neptune_pos).with_scale(Vec3::new(1.0, 0.983, 1.0)),
     )).id();
-    spawn_planet_area_light(&mut commands, neptune_entity, neptune_pos, 1159.4);
+    spawn_planet_area_light(&mut commands, neptune_entity, neptune_pos, 24622.0);
 
     // --- DWARF PLANET 2: PLUTO & MOON CHARON (39.482 AU) ---
     let pluto_orbit_radius = 39.482000 * 240_000.0; // 9,475,680.00 km
-    let pluto_orbit_speed = 0.005;
+    let pluto_orbit_speed = 0.00060; // 0.0040x Earth speed
     let pluto_angle = next_orbit_angle();
     let pluto_pos = Vec3::new(pluto_orbit_radius * pluto_angle.cos(), 0.0, pluto_orbit_radius * pluto_angle.sin());
     let pluto_tex: Handle<Image> = asset_server.load("textures/pluto.jpg");
-    let pluto_mesh = meshes.add(create_uv_sphere(56.0, 192, 96));
+    let pluto_mesh = meshes.add(create_uv_sphere(1188.3, 192, 96));
     let pluto_mat = materials.add(StandardMaterial {
         base_color_texture: Some(pluto_tex.clone()),
         perceptual_roughness: 0.7,
@@ -922,26 +920,26 @@ pub fn setup_scene(
         Planet {
             name: "Pluto",
             index: 9,
-            radius: 56.0,
+            radius: 1188.3,
             orbit_radius: pluto_orbit_radius,
             orbit_speed: pluto_orbit_speed,
             orbit_angle: pluto_angle,
-            rotation_speed: 0.0018,
+            rotation_speed: 0.00047, // 6.39d spin
             world_pos: pluto_pos,
         },
-        PlanetLod::new(9, false, "", 4.0, pluto_tex.clone(), 192, 96),
+        PlanetLod::new(9, false, "", 10.0, pluto_tex.clone(), 192, 96),
         Mesh3d(pluto_mesh),
         MeshMaterial3d(pluto_mat),
         Transform::from_translation(pluto_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, pluto_entity, pluto_pos, 56.0);
+    spawn_planet_area_light(&mut commands, pluto_entity, pluto_pos, 1188.3);
 
     // Charon
-    let charon_orbit_radius = 924.0;
+    let charon_orbit_radius = 19591.0; // 19,591 km orbit
     let charon_orbit_speed = 0.2;
     let charon_angle = next_orbit_angle();
     let charon_pos = pluto_pos + Vec3::new(charon_orbit_radius * charon_angle.cos(), 0.0, charon_orbit_radius * charon_angle.sin());
-    let charon_mesh = meshes.add(create_uv_sphere(28.5, 192, 96));
+    let charon_mesh = meshes.add(create_uv_sphere(606.0, 192, 96));
     let charon_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.5, 0.48, 0.45),
         perceptual_roughness: 0.85,
@@ -951,27 +949,27 @@ pub fn setup_scene(
         Moon {
             name: "Charon",
             parent_index: 9,
-            radius: 28.5,
+            radius: 606.0,
             orbit_radius: charon_orbit_radius,
             orbit_speed: charon_orbit_speed,
             orbit_angle: charon_angle,
-            rotation_speed: 0.0012,
+            rotation_speed: 0.00047, // Tidally locked
             world_pos: charon_pos,
         },
-        PlanetLod::new(9, true, "Charon", 2.5, pluto_tex.clone(), 192, 96),
+        PlanetLod::new(9, true, "Charon", 6.25, pluto_tex.clone(), 192, 96),
         Mesh3d(charon_mesh),
         MeshMaterial3d(charon_mat),
         Transform::from_translation(charon_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, charon_entity, charon_pos, 28.5);
+    spawn_planet_area_light(&mut commands, charon_entity, charon_pos, 606.0);
 
     // --- DWARF PLANET 3: HAUMEA (43.218 AU) ---
     let haumea_orbit_radius = 43.218000 * 240_000.0; // 10,372,320.00 km
-    let haumea_orbit_speed = 0.004;
+    let haumea_orbit_speed = 0.000525; // 0.0035x Earth speed
     let haumea_angle = next_orbit_angle();
     let haumea_pos = Vec3::new(haumea_orbit_radius * haumea_angle.cos(), 0.0, haumea_orbit_radius * haumea_angle.sin());
     let haumea_tex: Handle<Image> = asset_server.load("textures/haumea.jpg");
-    let haumea_mesh = meshes.add(create_uv_sphere(37.4, 192, 96));
+    let haumea_mesh = meshes.add(create_uv_sphere(1050.0, 192, 96));
     let haumea_mat = materials.add(StandardMaterial {
         base_color_texture: Some(haumea_tex.clone()),
         perceptual_roughness: 0.5,
@@ -982,27 +980,27 @@ pub fn setup_scene(
         Planet {
             name: "Haumea",
             index: 11,
-            radius: 37.4,
+            radius: 1050.0,
             orbit_radius: haumea_orbit_radius,
             orbit_speed: haumea_orbit_speed,
             orbit_angle: haumea_angle,
-            rotation_speed: 0.0095,
+            rotation_speed: 0.01840, // Ultra-fast 3.91h spin!
             world_pos: haumea_pos,
         },
-        PlanetLod::new(11, false, "", 3.5, haumea_tex.clone(), 192, 96),
+        PlanetLod::new(11, false, "", 8.75, haumea_tex.clone(), 192, 96),
         Mesh3d(haumea_mesh),
         MeshMaterial3d(haumea_mat),
-        Transform::from_translation(haumea_pos).with_scale(Vec3::new(1.35, 0.85, 1.0)),
+        Transform::from_translation(haumea_pos).with_scale(Vec3::new(1.35, 0.85, 1.0)), // Triaxial Ellipsoid (1,050 x 840 x 537 km)
     )).id();
-    spawn_planet_area_light(&mut commands, haumea_entity, haumea_pos, 37.4);
+    spawn_planet_area_light(&mut commands, haumea_entity, haumea_pos, 1050.0);
 
     // --- DWARF PLANET 4: MAKEMAKE (45.563 AU) ---
     let makemake_orbit_radius = 45.563000 * 240_000.0; // 10,935,120.00 km
-    let makemake_orbit_speed = 0.0035;
+    let makemake_orbit_speed = 0.00048; // 0.0032x Earth speed
     let makemake_angle = next_orbit_angle();
     let makemake_pos = Vec3::new(makemake_orbit_radius * makemake_angle.cos(), 0.0, makemake_orbit_radius * makemake_angle.sin());
     let makemake_tex: Handle<Image> = asset_server.load("textures/makemake.jpg");
-    let makemake_mesh = meshes.add(create_uv_sphere(33.7, 192, 96));
+    let makemake_mesh = meshes.add(create_uv_sphere(715.0, 192, 96));
     let makemake_mat = materials.add(StandardMaterial {
         base_color_texture: Some(makemake_tex.clone()),
         perceptual_roughness: 0.65,
@@ -1012,27 +1010,27 @@ pub fn setup_scene(
         Planet {
             name: "Makemake",
             index: 12,
-            radius: 33.7,
+            radius: 715.0,
             orbit_radius: makemake_orbit_radius,
             orbit_speed: makemake_orbit_speed,
             orbit_angle: makemake_angle,
-            rotation_speed: 0.0028,
+            rotation_speed: 0.00320, // 22.48h spin
             world_pos: makemake_pos,
         },
-        PlanetLod::new(12, false, "", 3.0, makemake_tex.clone(), 192, 96),
+        PlanetLod::new(12, false, "", 7.5, makemake_tex.clone(), 192, 96),
         Mesh3d(makemake_mesh),
         MeshMaterial3d(makemake_mat),
         Transform::from_translation(makemake_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, makemake_entity, makemake_pos, 33.7);
+    spawn_planet_area_light(&mut commands, makemake_entity, makemake_pos, 715.0);
 
     // --- DWARF PLANET 5: ERIS (67.781 AU) ---
     let eris_orbit_radius = 67.781000 * 240_000.0; // 16,267,440.00 km
-    let eris_orbit_speed = 0.0025;
+    let eris_orbit_speed = 0.00027; // 0.0018x Earth speed
     let eris_angle = next_orbit_angle();
     let eris_pos = Vec3::new(eris_orbit_radius * eris_angle.cos(), 0.0, eris_orbit_radius * eris_angle.sin());
     let eris_tex: Handle<Image> = asset_server.load("textures/eris.jpg");
-    let eris_mesh = meshes.add(create_uv_sphere(54.8, 192, 96));
+    let eris_mesh = meshes.add(create_uv_sphere(1163.0, 192, 96));
     let eris_mat = materials.add(StandardMaterial {
         base_color_texture: Some(eris_tex.clone()),
         perceptual_roughness: 0.3,
@@ -1043,19 +1041,19 @@ pub fn setup_scene(
         Planet {
             name: "Eris",
             index: 13,
-            radius: 54.8,
+            radius: 1163.0,
             orbit_radius: eris_orbit_radius,
             orbit_speed: eris_orbit_speed,
             orbit_angle: eris_angle,
-            rotation_speed: 0.0022,
+            rotation_speed: 0.00278, // 25.90h spin
             world_pos: eris_pos,
         },
-        PlanetLod::new(13, false, "", 3.0, eris_tex.clone(), 192, 96),
+        PlanetLod::new(13, false, "", 7.5, eris_tex.clone(), 192, 96),
         Mesh3d(eris_mesh),
         MeshMaterial3d(eris_mat),
         Transform::from_translation(eris_pos),
     )).id();
-    spawn_planet_area_light(&mut commands, eris_entity, eris_pos, 54.8);
+    spawn_planet_area_light(&mut commands, eris_entity, eris_pos, 1163.0);
 
     // ----------------------------------------------------
     // 4. INTERPLANETARY SPACE DUST PARTICLES (SPRINKLED AROUND SYSTEM)
