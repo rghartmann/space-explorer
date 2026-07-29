@@ -50,7 +50,7 @@ pub fn setup_particle_assets(
     // Cyan/Blue plasma material for standard thrusters
     let normal_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(0.2, 0.85, 1.0, 0.85),
-        emissive: LinearRgba::new(2.0, 18.0, 45.0, 1.0),
+        emissive: LinearRgba::new(0.5, 2.5, 5.0, 1.0),
         unlit: true,
         alpha_mode: AlphaMode::Add,
         ..default()
@@ -59,7 +59,7 @@ pub fn setup_particle_assets(
     // Intense White-Core material for inner nozzle flame
     let core_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(1.0, 1.0, 1.0, 0.95),
-        emissive: LinearRgba::new(60.0, 60.0, 60.0, 1.0),
+        emissive: LinearRgba::new(12.0, 12.0, 12.0, 1.0),
         unlit: true,
         alpha_mode: AlphaMode::Add,
         ..default()
@@ -68,8 +68,7 @@ pub fn setup_particle_assets(
     // Magenta/Violet warp boost material for FTL 1.5x c mode
     let boost_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(1.0, 0.25, 0.95, 0.9),
-        emissive: LinearRgba::new(45.0, 6.0, 40.0, 1.0),
-        unlit: true,
+        emissive: LinearRgba::new(8.0, 1.5, 7.0, 1.0),
         alpha_mode: AlphaMode::Add,
         ..default()
     });
@@ -77,11 +76,12 @@ pub fn setup_particle_assets(
     // FTL Shockwave ring material
     let boost_ring_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(0.85, 0.4, 1.0, 0.75),
-        emissive: LinearRgba::new(30.0, 10.0, 50.0, 1.0),
+        emissive: LinearRgba::new(6.0, 2.0, 8.0, 1.0),
         unlit: true,
         alpha_mode: AlphaMode::Add,
         ..default()
     });
+
 
 
     commands.insert_resource(ParticleAssets {
@@ -223,22 +223,23 @@ pub fn thruster_particle_system(
     for (light_tag, mut light) in &mut light_query {
         if is_boosting {
             light.color = Color::srgb(0.95, 0.3, 1.0);
-            let target_intensity = if light_tag.emitter_type == EmitterType::CenterBoost { 20_000.0 } else { 14_000.0 };
+            let target_intensity = if light_tag.emitter_type == EmitterType::CenterBoost { 1_800.0 } else { 1_000.0 };
             light.intensity = light.intensity.lerp(target_intensity * (0.5 + 0.5 * boost_factor), (15.0 * dt).min(1.0));
-            light.range = 10.0;
+            light.range = 8.0;
         } else if is_moving || is_accelerating {
             if light_tag.emitter_type == EmitterType::CenterBoost {
                 light.intensity = light.intensity.lerp(0.0, (15.0 * dt).min(1.0));
             } else {
                 light.color = Color::srgb(0.2, 0.8, 1.0);
-                let target_intensity = 3_000.0 + speed_factor * 6_000.0;
+                let target_intensity = 300.0 + speed_factor * 600.0;
                 light.intensity = light.intensity.lerp(target_intensity, (15.0 * dt).min(1.0));
-                light.range = 4.0 + speed_factor * 3.0;
+                light.range = 3.0 + speed_factor * 2.0;
             }
         } else {
             light.intensity = light.intensity.lerp(0.0, (10.0 * dt).min(1.0));
         }
     }
+
 
     let seed = (time.elapsed_secs_f64() * 100000.0) as u32;
     let mut rng = PseudoRng::new(seed);

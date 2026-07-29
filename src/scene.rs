@@ -240,11 +240,11 @@ pub fn setup_scene(
             },
             Tonemapping::default(),
             Bloom {
-                intensity: 0.25,
-                low_frequency_boost: 0.5,
+                intensity: 0.12,
+                low_frequency_boost: 0.3,
                 high_pass_frequency: 1.0,
                 prefilter: BloomPrefilter {
-                    threshold: 1.0,
+                    threshold: 1.2,
                     threshold_softness: 0.2,
                 },
                 ..default()
@@ -270,9 +270,9 @@ pub fn setup_scene(
     let ship_light = commands
         .spawn((
             PointLight {
-                intensity: 20_000.0,
+                intensity: 1_200.0,
                 color: Color::srgb(0.9, 0.95, 1.0),
-                range: 25.0,
+                range: 12.0,
                 shadow_maps_enabled: false,
                 ..default()
             },
@@ -280,6 +280,7 @@ pub fn setup_scene(
         ))
         .id();
     commands.entity(ship_entity).add_child(ship_light);
+
 
     // Ambient Fill Light for deep space
     commands.spawn(AmbientLight {
