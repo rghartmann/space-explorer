@@ -37,5 +37,6 @@ pub struct AutoPilotState {
     pub target_name: &'static str,
     pub arrived: bool,
     pub engine_stopped: bool,
+    pub prev_target_pos: Option<Vec3>,
 }
 

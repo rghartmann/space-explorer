@@ -41,7 +41,12 @@ pub fn animate_cockpit_buttons_system(
     let is_thrusting = keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::KeyS);
     let is_boosting = flight_state.boost_mode;
     let is_orbit_steering = (autopilot.arrived || autopilot.engine_stopped)
-        && (keyboard.pressed(KeyCode::KeyQ) || keyboard.pressed(KeyCode::KeyE));
+        && (keyboard.pressed(KeyCode::KeyW)
+            || keyboard.pressed(KeyCode::KeyA)
+            || keyboard.pressed(KeyCode::KeyS)
+            || keyboard.pressed(KeyCode::KeyD)
+            || keyboard.pressed(KeyCode::KeyQ)
+            || keyboard.pressed(KeyCode::KeyE));
 
     for (btn, mat_handle) in &button_query {
         if let Some(mut mat) = materials.get_mut(mat_handle) {
@@ -54,13 +59,26 @@ pub fn animate_cockpit_buttons_system(
                 CockpitButtonType::OrbitStop => autopilot.engine_stopped,
             };
 
-            let target = if active {
+            let base_target = if active {
                 btn.active_emissive
             } else {
                 btn.base_emissive
             };
 
-            let lerp_speed = 2.0;
+            let pulse = if active {
+                1.0 + 0.18 * (time.elapsed_secs() * 6.0).sin()
+            } else {
+                1.0
+            };
+
+            let target = LinearRgba::new(
+                base_target.red * pulse,
+                base_target.green * pulse,
+                base_target.blue * pulse,
+                1.0,
+            );
+
+            let lerp_speed = 4.0;
             mat.emissive = LinearRgba::new(
                 mat.emissive.red + (target.red - mat.emissive.red) * (lerp_speed * dt).min(1.0),
                 mat.emissive.green + (target.green - mat.emissive.green) * (lerp_speed * dt).min(1.0),
@@ -112,7 +130,7 @@ pub fn update_hud_system(
                 }
 
                 let status_label = if autopilot.engine_stopped || autopilot.arrived {
-                    "IN PLANET ORBIT (USE Q/E TO ORBIT LEFT/RIGHT | W TO BREAK ORBIT)"
+                    "IN PLANET ORBIT (MOUSE / WASD: ORBIT PITCH & YAW | Q/E: CLOSER/FARTHER | PRESS [O] TO LEAVE ORBIT)"
                 } else {
                     "EN ROUTE TO DESTINATION"
                 };
@@ -148,7 +166,6 @@ pub fn update_celestial_labels_system(
     moon_query: Query<(&Moon, &Transform)>,
     mut label_query: Query<(Entity, &CelestialLabel, &mut Node, &mut Visibility, &Children)>,
     mut text_query: Query<&mut Text>,
-    mut gizmos: Gizmos,
     window_query: Query<&Window>,
 ) {
     let Ok((camera, cam_global_transform)) = camera_query.single() else { return; };
@@ -156,8 +173,6 @@ pub fn update_celestial_labels_system(
 
     let win_w = window.width();
     let win_h = window.height();
-    let half_w = win_w * 0.5;
-    let half_h = win_h * 0.5;
 
     struct VisibleLabelData {
         entity: Entity,
@@ -263,7 +278,7 @@ pub fn update_celestial_labels_system(
         LabelRect { x: 10.0, y: 10.0, w: 780.0, h: 80.0 },
     ];
 
-    let mut resolved_positions: std::collections::HashMap<Entity, (Vec2, Vec2, f32)> = std::collections::HashMap::new();
+    let mut resolved_positions: std::collections::HashMap<Entity, Vec2> = std::collections::HashMap::new();
 
     for label_data in &visible_labels {
         let vx = label_data.viewport_pos.x;
@@ -343,24 +358,15 @@ pub fn update_celestial_labels_system(
             h,
         });
 
-        resolved_positions.insert(label_data.entity, (label_data.viewport_pos, Vec2::new(chosen_x, chosen_y), w));
+        resolved_positions.insert(label_data.entity, Vec2::new(chosen_x, chosen_y));
     }
 
-    // 4. Update Node position and Visibility, draw leader lines for all labels
+    // 4. Update Node position and Visibility for all labels
     for (entity, _label, mut node, mut vis, _children) in &mut label_query {
-        if let Some(&(viewport_pos, label_pos, label_w)) = resolved_positions.get(&entity) {
+        if let Some(&label_pos) = resolved_positions.get(&entity) {
             node.left = Val::Px(label_pos.x);
             node.top = Val::Px(label_pos.y);
             *vis = Visibility::Inherited;
-
-            let start_2d = Vec2::new(viewport_pos.x - half_w, half_h - viewport_pos.y);
-            let line_end_x = if label_pos.x > viewport_pos.x {
-                label_pos.x - 4.0
-            } else {
-                label_pos.x + label_w + 4.0
-            };
-            let end_2d = Vec2::new(line_end_x - half_w, half_h - (label_pos.y + 6.0));
-            gizmos.line_2d(start_2d, end_2d, Color::srgba(0.0, 0.75, 0.85, 0.35));
         } else {
             *vis = Visibility::Hidden;
         }

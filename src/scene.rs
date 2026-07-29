@@ -49,18 +49,27 @@ pub fn setup_scene(
         ))
         .with_children(|parent| {
             parent.spawn((
+                Text::new("COCKPIT CONTROLS: [W/S] THRUSTERS | [SPACE] WARP BOOST | [SHIELDS] SHIELD MATRIX | [0-9] AUTONAV LINK | [O] ORBIT STOP | [ALERT] WARNING SYSTEM"),
+                TextFont {
+                    font_size: 11.5.into(),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.0, 0.95, 0.85)),
+            ));
+
+            parent.spawn((
                 Text::new("AUTOPILOT DESTINATIONS: [0] Sun | [1] Mercury | [2] Venus | [3] Earth | [4] Mars | [5] Jupiter | [6] Saturn | [7] Uranus | [8] Neptune | [9] Pluto"),
                 TextFont {
-                    font_size: 13.0.into(),
+                    font_size: 12.0.into(),
                     ..default()
                 },
                 TextColor(Color::srgb(0.0, 0.88, 1.0)),
             ));
 
             parent.spawn((
-                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel) | MOUSE (Steer Pitch/Yaw) | SPACE (Toggle Boost / Rapid Brake) | Q/E (Orbit Left/Right in Orbit) | [O] Stop Engine & Orbit | ESC (Exit)"),
+                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel) | MOUSE (Steer Pitch/Yaw) | SPACE (Toggle Boost / Rapid Brake) | WASD (Orbit) | Q/E (Closer/Farther) | [O] Enter/Leave Orbit | ESC (Exit)"),
                 TextFont {
-                    font_size: 12.0.into(),
+                    font_size: 11.5.into(),
                     ..default()
                 },
                 TextColor(Color::srgb(0.7, 0.8, 0.9)),
@@ -68,7 +77,7 @@ pub fn setup_scene(
 
             parent.spawn((
                 AutoPilotHudText,
-                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [0-9] TO ENGAGE AUTOPILOT | PRESS [O] TO STOP ENGINE & ORBIT"),
+                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [0-9] TO ENGAGE AUTOPILOT | PRESS [O] TO ENTER/LEAVE ORBIT"),
                 TextFont {
                     font_size: 13.0.into(),
                     ..default()
@@ -94,7 +103,7 @@ pub fn setup_scene(
                 ))
                 .with_children(|btn_parent| {
                     btn_parent.spawn((
-                        Text::new("🛑 STOP ENGINE & ENTER PLANET ORBIT (KEY O)"),
+                        Text::new("🛑 ENTER / LEAVE PLANET ORBIT (KEY O)"),
                         TextFont {
                             font_size: 13.0.into(),
                             ..default()
@@ -112,6 +121,7 @@ pub fn setup_scene(
         ("[3] ", "Earth", CelestialTargetType::Planet(3)),
         ("", "Moon", CelestialTargetType::Moon("Moon")),
         ("[4] ", "Mars", CelestialTargetType::Planet(4)),
+        ("", "Ceres", CelestialTargetType::Planet(10)),
         ("[5] ", "Jupiter", CelestialTargetType::Planet(5)),
         ("", "Io", CelestialTargetType::Moon("Io")),
         ("", "Europa", CelestialTargetType::Moon("Europa")),
@@ -120,6 +130,9 @@ pub fn setup_scene(
         ("[8] ", "Neptune", CelestialTargetType::Planet(8)),
         ("[9] ", "Pluto", CelestialTargetType::Planet(9)),
         ("", "Charon", CelestialTargetType::Moon("Charon")),
+        ("", "Haumea", CelestialTargetType::Planet(11)),
+        ("", "Makemake", CelestialTargetType::Planet(12)),
+        ("", "Eris", CelestialTargetType::Planet(13)),
     ];
 
     for (prefix, name, target_type) in labels_info {
@@ -191,10 +204,11 @@ pub fn setup_scene(
                 ..default()
             },
             Projection::Perspective(PerspectiveProjection {
+                near: 0.005,
                 far: 120_000.0,
                 ..default()
             }),
-            Transform::from_xyz(0.0, 0.5, 0.0),
+            Transform::from_xyz(0.0, 0.38, 0.0),
             DistanceFog {
                 color: Color::srgba(0.002, 0.005, 0.015, 1.0),
                 falloff: FogFalloff::Exponential { density: 0.000003 },
@@ -221,9 +235,9 @@ pub fn setup_scene(
     commands.entity(ship_entity).add_child(cockpit_light);
 
     // ----------------------------------------------------
-    // COCKPIT DASHBOARD & CONSOLE FRAMEWORK (FIXED TO SHIP FRAME)
+    // COCKPIT DASHBOARD & CONSOLE FRAMEWORK (SLEEK, LOW-PROFILE SLIM DASHBOARD)
     // ----------------------------------------------------
-    let console_mesh = meshes.add(Cuboid::from_size(Vec3::new(1.1, 0.18, 0.45)));
+    let console_mesh = meshes.add(Cuboid::from_size(Vec3::new(1.05, 0.07, 0.22)));
     let console_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.04, 0.05, 0.08),
         metallic: 0.95,
@@ -235,15 +249,15 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(console_mesh),
             MeshMaterial3d(console_mat),
-            Transform::from_xyz(0.0, 0.02, -0.65)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(0.0, 0.06, -0.60)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(console_entity);
 
-    // Scaled-down Control Panel Inset
+    // Scaled Control Panel Inset (Elevated slightly to eliminate Z-fighting)
     let panel_texture: Handle<Image> = asset_server.load("textures/control_panel.jpg");
-    let panel_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.32, 0.005, 0.32)));
+    let panel_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.50, 0.003, 0.18)));
     let panel_mat = materials.add(StandardMaterial {
         base_color_texture: Some(panel_texture.clone()),
         emissive_texture: Some(panel_texture),
@@ -257,14 +271,14 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(panel_mesh),
             MeshMaterial3d(panel_mat),
-            Transform::from_xyz(0.0, 0.115, -0.62)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(0.0, 0.098, -0.585)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(center_panel);
 
-    // Screens Frame Material
-    let screen_frame_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.28, 0.20, 0.02)));
+    // Screens Frame Material (COMPACT CORNER DISPLAY PANELS)
+    let screen_frame_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.20, 0.13, 0.012)));
     let screen_frame_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.08, 0.09, 0.12),
         metallic: 0.9,
@@ -272,19 +286,19 @@ pub fn setup_scene(
         ..default()
     });
 
-    // LEFT SCREEN: TACTICAL NAV RADAR (STEADY EMISSIVE DISPLAY)
+    // LEFT SCREEN: TACTICAL NAV RADAR (ANGLED ERGONOMICALY TOWARD PILOT)
     let left_frame = commands
         .spawn((
             Mesh3d(screen_frame_mesh.clone()),
             MeshMaterial3d(screen_frame_mat.clone()),
-            Transform::from_xyz(-0.38, 0.16, -0.64)
-                .with_rotation(Quat::from_rotation_y(0.25)),
+            Transform::from_xyz(-0.45, 0.16, -0.62)
+                .with_rotation(Quat::from_rotation_y(0.28) * Quat::from_rotation_x(0.06)),
         ))
         .id();
     commands.entity(ship_entity).add_child(left_frame);
 
     let nav_texture: Handle<Image> = asset_server.load("textures/nav_screen.jpg");
-    let nav_screen_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.26, 0.18, 0.002)));
+    let nav_screen_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.185, 0.115, 0.002)));
     let nav_screen_mat = materials.add(StandardMaterial {
         base_color_texture: Some(nav_texture.clone()),
         emissive_texture: Some(nav_texture),
@@ -298,14 +312,14 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(nav_screen_mesh),
             MeshMaterial3d(nav_screen_mat),
-            Transform::from_xyz(-0.38, 0.16, -0.628)
-                .with_rotation(Quat::from_rotation_y(0.25)),
+            Transform::from_xyz(-0.445, 0.16, -0.608)
+                .with_rotation(Quat::from_rotation_y(0.28) * Quat::from_rotation_x(0.06)),
         ))
         .id();
     commands.entity(ship_entity).add_child(nav_screen);
 
-    // Radar Sweep Needle
-    let needle_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.11, 0.002, 0.003)));
+    // Radar Sweep Needle (Separated to avoid z-fighting with screen face)
+    let needle_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.08, 0.002, 0.002)));
     let needle_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.0, 1.0, 0.9),
         emissive: LinearRgba::new(0.0, 2.0, 2.5, 1.0),
@@ -318,25 +332,25 @@ pub fn setup_scene(
             RadarSweepNeedle,
             Mesh3d(needle_mesh),
             MeshMaterial3d(needle_mat),
-            Transform::from_xyz(-0.38, 0.16, -0.624)
-                .with_rotation(Quat::from_rotation_y(0.25)),
+            Transform::from_xyz(-0.442, 0.16, -0.602)
+                .with_rotation(Quat::from_rotation_y(0.28) * Quat::from_rotation_x(0.06)),
         ))
         .id();
     commands.entity(ship_entity).add_child(radar_needle);
 
-    // RIGHT SCREEN: SHIP DIAGNOSTICS (STEADY EMISSIVE DISPLAY)
+    // RIGHT SCREEN: SHIP DIAGNOSTICS (ANGLED ERGONOMICALY TOWARD PILOT)
     let right_frame = commands
         .spawn((
             Mesh3d(screen_frame_mesh),
             MeshMaterial3d(screen_frame_mat.clone()),
-            Transform::from_xyz(0.38, 0.16, -0.64)
-                .with_rotation(Quat::from_rotation_y(-0.25)),
+            Transform::from_xyz(0.45, 0.16, -0.62)
+                .with_rotation(Quat::from_rotation_y(-0.28) * Quat::from_rotation_x(0.06)),
         ))
         .id();
     commands.entity(ship_entity).add_child(right_frame);
 
     let diag_texture: Handle<Image> = asset_server.load("textures/diag_screen.jpg");
-    let diag_screen_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.26, 0.18, 0.002)));
+    let diag_screen_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.185, 0.115, 0.002)));
     let diag_screen_mat = materials.add(StandardMaterial {
         base_color_texture: Some(diag_texture.clone()),
         emissive_texture: Some(diag_texture),
@@ -350,15 +364,15 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(diag_screen_mesh),
             MeshMaterial3d(diag_screen_mat),
-            Transform::from_xyz(0.38, 0.16, -0.628)
-                .with_rotation(Quat::from_rotation_y(-0.25)),
+            Transform::from_xyz(0.445, 0.16, -0.608)
+                .with_rotation(Quat::from_rotation_y(-0.28) * Quat::from_rotation_x(0.06)),
         ))
         .id();
     commands.entity(ship_entity).add_child(diag_screen);
 
-    // COCKPIT BUTTONS (RIGHT SIDE UP, PROPERLY ALIGNED & MAPPED)
-    let button_cap_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.038, 0.015, 0.038)));
-    let button_base_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.045, 0.008, 0.045)));
+    // COCKPIT BUTTONS (COMPACT, SLEEK LOW-PROFILE LAYOUT)
+    let button_cap_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.028, 0.010, 0.028)));
+    let button_base_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.032, 0.006, 0.032)));
     let metal_frame_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.12, 0.14, 0.18),
         metallic: 0.95,
@@ -366,7 +380,10 @@ pub fn setup_scene(
         ..default()
     });
 
-    // 1. Thruster Button
+    // Button X offsets for compact, high-visibility 6-button console layout
+    let button_x_positions = [-0.20, -0.12, -0.04, 0.04, 0.12, 0.20];
+
+    // 1. Thruster Button [W/S]
     let btn_thruster_tex: Handle<Image> = asset_server.load("textures/button_thruster.jpg");
     let btn_thruster_mat = materials.add(StandardMaterial {
         base_color_texture: Some(btn_thruster_tex.clone()),
@@ -381,8 +398,8 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(button_base_mesh.clone()),
             MeshMaterial3d(metal_frame_mat.clone()),
-            Transform::from_xyz(-0.12, 0.13, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(button_x_positions[0], 0.104, -0.580)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b1_base);
@@ -392,17 +409,17 @@ pub fn setup_scene(
             CockpitButton {
                 button_type: CockpitButtonType::Thruster,
                 base_emissive: LinearRgba::new(0.0, 0.8, 1.0, 1.0),
-                active_emissive: LinearRgba::new(0.0, 1.3, 1.6, 1.0),
+                active_emissive: LinearRgba::new(0.0, 1.8, 2.2, 1.0),
             },
             Mesh3d(button_cap_mesh.clone()),
             MeshMaterial3d(btn_thruster_mat),
-            Transform::from_xyz(-0.12, 0.142, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(button_x_positions[0], 0.112, -0.577)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b1_cap);
 
-    // 2. Warp Button
+    // 2. Warp Button [SPACE]
     let btn_warp_tex: Handle<Image> = asset_server.load("textures/button_warp.jpg");
     let btn_warp_mat = materials.add(StandardMaterial {
         base_color_texture: Some(btn_warp_tex.clone()),
@@ -417,8 +434,8 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(button_base_mesh.clone()),
             MeshMaterial3d(metal_frame_mat.clone()),
-            Transform::from_xyz(0.12, 0.13, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(button_x_positions[1], 0.104, -0.580)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b2_base);
@@ -428,12 +445,12 @@ pub fn setup_scene(
             CockpitButton {
                 button_type: CockpitButtonType::Warp,
                 base_emissive: LinearRgba::new(1.0, 0.5, 0.0, 1.0),
-                active_emissive: LinearRgba::new(1.5, 0.8, 0.0, 1.0),
+                active_emissive: LinearRgba::new(2.2, 1.2, 0.0, 1.0),
             },
             Mesh3d(button_cap_mesh.clone()),
             MeshMaterial3d(btn_warp_mat),
-            Transform::from_xyz(0.12, 0.142, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(button_x_positions[1], 0.112, -0.577)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b2_cap);
@@ -453,8 +470,8 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(button_base_mesh.clone()),
             MeshMaterial3d(metal_frame_mat.clone()),
-            Transform::from_xyz(-0.07, 0.13, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(button_x_positions[2], 0.104, -0.580)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b3_base);
@@ -464,17 +481,17 @@ pub fn setup_scene(
             CockpitButton {
                 button_type: CockpitButtonType::Shields,
                 base_emissive: LinearRgba::new(0.0, 1.0, 0.3, 1.0),
-                active_emissive: LinearRgba::new(0.0, 1.4, 0.4, 1.0),
+                active_emissive: LinearRgba::new(0.0, 1.8, 0.5, 1.0),
             },
             Mesh3d(button_cap_mesh.clone()),
             MeshMaterial3d(btn_shield_mat),
-            Transform::from_xyz(-0.07, 0.142, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(button_x_positions[2], 0.112, -0.577)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b3_cap);
 
-    // 4. Auto-Nav Steering Button
+    // 4. Auto-Nav Steering Button [0-9]
     let btn_autonav_tex: Handle<Image> = asset_server.load("textures/button_autonav.jpg");
     let btn_autonav_mat = materials.add(StandardMaterial {
         base_color_texture: Some(btn_autonav_tex.clone()),
@@ -489,8 +506,8 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(button_base_mesh.clone()),
             MeshMaterial3d(metal_frame_mat.clone()),
-            Transform::from_xyz(0.07, 0.13, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(button_x_positions[3], 0.104, -0.580)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b4_base);
@@ -500,17 +517,51 @@ pub fn setup_scene(
             CockpitButton {
                 button_type: CockpitButtonType::AutoNav,
                 base_emissive: LinearRgba::new(0.0, 0.6, 1.4, 1.0),
-                active_emissive: LinearRgba::new(0.0, 1.0, 2.0, 1.0),
+                active_emissive: LinearRgba::new(0.0, 1.2, 2.5, 1.0),
             },
             Mesh3d(button_cap_mesh.clone()),
             MeshMaterial3d(btn_autonav_mat),
-            Transform::from_xyz(0.07, 0.142, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(button_x_positions[3], 0.112, -0.577)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b4_cap);
 
-    // 5. Alert Warning Button
+    // 5. Orbit Stop Engine Button [O]
+    let btn_orbit_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.9, 0.15, 0.15),
+        emissive: LinearRgba::new(1.0, 0.2, 0.2, 1.0),
+        perceptual_roughness: 0.2,
+        metallic: 0.4,
+        ..default()
+    });
+
+    let b5_base = commands
+        .spawn((
+            Mesh3d(button_base_mesh.clone()),
+            MeshMaterial3d(metal_frame_mat.clone()),
+            Transform::from_xyz(button_x_positions[4], 0.104, -0.580)
+                .with_rotation(Quat::from_rotation_x(0.32)),
+        ))
+        .id();
+    commands.entity(ship_entity).add_child(b5_base);
+
+    let b5_cap = commands
+        .spawn((
+            CockpitButton {
+                button_type: CockpitButtonType::OrbitStop,
+                base_emissive: LinearRgba::new(1.0, 0.2, 0.2, 1.0),
+                active_emissive: LinearRgba::new(2.0, 0.3, 0.3, 1.0),
+            },
+            Mesh3d(button_cap_mesh.clone()),
+            MeshMaterial3d(btn_orbit_mat),
+            Transform::from_xyz(button_x_positions[4], 0.112, -0.577)
+                .with_rotation(Quat::from_rotation_x(0.32)),
+        ))
+        .id();
+    commands.entity(ship_entity).add_child(b5_cap);
+
+    // 6. Alert Warning Button
     let btn_alert_tex: Handle<Image> = asset_server.load("textures/button_alert.jpg");
     let btn_alert_mat = materials.add(StandardMaterial {
         base_color_texture: Some(btn_alert_tex.clone()),
@@ -521,46 +572,12 @@ pub fn setup_scene(
         ..default()
     });
 
-    let b5_base = commands
-        .spawn((
-            Mesh3d(button_base_mesh.clone()),
-            MeshMaterial3d(metal_frame_mat.clone()),
-            Transform::from_xyz(0.16, 0.13, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
-        ))
-        .id();
-    commands.entity(ship_entity).add_child(b5_base);
-
-    let b5_cap = commands
-        .spawn((
-            CockpitButton {
-                button_type: CockpitButtonType::Alert,
-                base_emissive: LinearRgba::new(0.9, 0.1, 0.1, 1.0),
-                active_emissive: LinearRgba::new(1.4, 0.2, 0.2, 1.0),
-            },
-            Mesh3d(button_cap_mesh.clone()),
-            MeshMaterial3d(btn_alert_mat),
-            Transform::from_xyz(0.16, 0.142, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
-        ))
-        .id();
-    commands.entity(ship_entity).add_child(b5_cap);
-
-    // 6. Orbit Stop Engine Button (Center Console)
-    let btn_orbit_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.9, 0.15, 0.15),
-        emissive: LinearRgba::new(1.0, 0.2, 0.2, 1.0),
-        perceptual_roughness: 0.2,
-        metallic: 0.4,
-        ..default()
-    });
-
     let b6_base = commands
         .spawn((
             Mesh3d(button_base_mesh),
             MeshMaterial3d(metal_frame_mat.clone()),
-            Transform::from_xyz(0.0, 0.13, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            Transform::from_xyz(button_x_positions[5], 0.104, -0.580)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b6_base);
@@ -568,22 +585,22 @@ pub fn setup_scene(
     let b6_cap = commands
         .spawn((
             CockpitButton {
-                button_type: CockpitButtonType::OrbitStop,
-                base_emissive: LinearRgba::new(1.0, 0.2, 0.2, 1.0),
-                active_emissive: LinearRgba::new(1.6, 0.3, 0.3, 1.0),
+                button_type: CockpitButtonType::Alert,
+                base_emissive: LinearRgba::new(0.9, 0.1, 0.1, 1.0),
+                active_emissive: LinearRgba::new(2.0, 0.2, 0.2, 1.0),
             },
             Mesh3d(button_cap_mesh),
-            MeshMaterial3d(btn_orbit_mat),
-            Transform::from_xyz(0.0, 0.142, -0.61)
-                .with_rotation(Quat::from_rotation_x(0.35)),
+            MeshMaterial3d(btn_alert_mat),
+            Transform::from_xyz(button_x_positions[5], 0.112, -0.577)
+                .with_rotation(Quat::from_rotation_x(0.32)),
         ))
         .id();
     commands.entity(ship_entity).add_child(b6_cap);
 
-    // Toggle Switches & LEDs
-    let toggle_base_mesh = meshes.add(Cylinder::new(0.007, 0.01));
-    let toggle_pin_mesh = meshes.add(Cylinder::new(0.0025, 0.03));
-    let led_bead_mesh = meshes.add(Sphere::new(0.004));
+    // Toggle Switches & Status LEDs
+    let toggle_base_mesh = meshes.add(Cylinder::new(0.005, 0.008));
+    let toggle_pin_mesh = meshes.add(Cylinder::new(0.002, 0.022));
+    let led_bead_mesh = meshes.add(Sphere::new(0.003));
 
     let chrome_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.85, 0.88, 0.92),
@@ -599,26 +616,28 @@ pub fn setup_scene(
         LinearRgba::new(1.6, 0.1, 0.1, 1.0),
     ];
 
+    let led_positions = [-0.15, -0.07, 0.07, 0.15];
+
     for (i, &led_color) in led_colors.iter().enumerate() {
-        let x_pos = -0.16 + (i as f32) * 0.03;
+        let x_pos = led_positions[i];
 
         let t_base = commands
             .spawn((
                 Mesh3d(toggle_base_mesh.clone()),
                 MeshMaterial3d(metal_frame_mat.clone()),
-                Transform::from_xyz(x_pos, 0.13, -0.58)
-                    .with_rotation(Quat::from_rotation_x(0.35)),
+                Transform::from_xyz(x_pos, 0.104, -0.555)
+                    .with_rotation(Quat::from_rotation_x(0.32)),
             ))
             .id();
         commands.entity(ship_entity).add_child(t_base);
 
-        let angle = if i % 2 == 0 { 0.35 } else { -0.35 };
+        let angle = if i % 2 == 0 { 0.32 } else { -0.32 };
         let t_pin = commands
             .spawn((
                 Mesh3d(toggle_pin_mesh.clone()),
                 MeshMaterial3d(chrome_mat.clone()),
-                Transform::from_xyz(x_pos, 0.14, -0.58)
-                    .with_rotation(Quat::from_rotation_z(angle) * Quat::from_rotation_x(0.35)),
+                Transform::from_xyz(x_pos, 0.112, -0.555)
+                    .with_rotation(Quat::from_rotation_z(angle) * Quat::from_rotation_x(0.32)),
             ))
             .id();
         commands.entity(ship_entity).add_child(t_pin);
@@ -634,14 +653,14 @@ pub fn setup_scene(
             .spawn((
                 Mesh3d(led_bead_mesh.clone()),
                 MeshMaterial3d(led_mat),
-                Transform::from_xyz(x_pos, 0.14, -0.59),
+                Transform::from_xyz(x_pos, 0.108, -0.562),
             ))
             .id();
         commands.entity(ship_entity).add_child(led);
     }
 
-    // PANORAMIC OBSERVATION BAY CANOPY STRUTS (THIN PERIPHERAL FRAMING)
-    let strut_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.02, 1.6, 0.02)));
+    // PANORAMIC OBSERVATION BAY CANOPY STRUTS (ULTRA-THIN SLEEK PERIPHERAL PILLARS)
+    let strut_mesh = meshes.add(Cuboid::from_size(Vec3::new(0.012, 1.3, 0.012)));
     let strut_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.08, 0.1, 0.14),
         metallic: 0.95,
@@ -653,8 +672,8 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(strut_mesh.clone()),
             MeshMaterial3d(strut_mat.clone()),
-            Transform::from_xyz(-1.15, 0.60, -0.5)
-                .with_rotation(Quat::from_rotation_z(-0.38)),
+            Transform::from_xyz(-0.85, 0.45, -0.52)
+                .with_rotation(Quat::from_rotation_z(-0.35)),
         ))
         .id();
 
@@ -662,8 +681,8 @@ pub fn setup_scene(
         .spawn((
             Mesh3d(strut_mesh),
             MeshMaterial3d(strut_mat),
-            Transform::from_xyz(1.15, 0.60, -0.5)
-                .with_rotation(Quat::from_rotation_z(0.38)),
+            Transform::from_xyz(0.85, 0.45, -0.52)
+                .with_rotation(Quat::from_rotation_z(0.35)),
         ))
         .id();
 
@@ -1655,8 +1674,12 @@ pub fn setup_loading_screen(
 
     loading_assets.handles.clear();
     for path in asset_paths {
-        let handle: Handle<Image> = asset_server.load(path);
-        loading_assets.handles.push(handle.untyped());
+        let untyped = if path.ends_with(".wav") {
+            asset_server.load::<AudioSource>(path).untyped()
+        } else {
+            asset_server.load::<Image>(path).untyped()
+        };
+        loading_assets.handles.push(untyped);
     }
 
     commands.spawn((

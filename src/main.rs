@@ -54,6 +54,7 @@ fn main() {
             Update,
             (
                 (
+                    (orbit_planets_system, orbit_moons_system, orbit_asteroids_system),
                     (autopilot_input_system, stop_engine_input_system),
                     autopilot_flight_system,
                     ship_flight_system,
@@ -63,9 +64,6 @@ fn main() {
                     .chain(),
                 hide_cursor_system,
                 exit_on_esc,
-                orbit_planets_system,
-                orbit_moons_system,
-                orbit_asteroids_system,
                 engine_sound_system,
                 animate_cockpit_screens_system,
                 animate_cockpit_buttons_system,

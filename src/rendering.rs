@@ -204,18 +204,12 @@ pub fn logarithmic_distance_render_system(
         let vec_to = asteroid.world_pos - cam_pos;
         let d_real = vec_to.length();
 
-        if d_real > 150_000.0 {
+        if d_real > 150_000.0 || d_real < 1.2 {
             *vis = Visibility::Hidden;
             continue;
         }
 
-        if d_real < 0.1 {
-            transform.translation = Vec3::ZERO;
-            *vis = Visibility::Inherited;
-            continue;
-        }
-
-        let dir = vec_to / d_real;
+        let dir = vec_to / d_real.max(0.1);
         *vis = Visibility::Inherited;
 
         let blend = (d_real / transition_dist).clamp(0.0, 1.0);
@@ -239,7 +233,7 @@ pub fn logarithmic_distance_render_system(
         let vec_to = dust.world_pos - cam_pos;
         let d_real = vec_to.length();
 
-        if d_real > 300_000.0 {
+        if d_real > 300_000.0 || d_real < 1.2 {
             *vis = Visibility::Hidden;
             continue;
         }
