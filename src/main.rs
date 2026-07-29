@@ -1,7 +1,8 @@
 mod audio;
-mod cockpit;
 mod components;
 mod flight;
+mod hud;
+mod particles;
 mod rendering;
 mod resources;
 mod scene;
@@ -11,15 +12,13 @@ use bevy::transform::TransformSystems;
 use bevy::window::WindowMode;
 
 use audio::engine_sound_system;
-use cockpit::{
-    animate_cockpit_buttons_system, animate_cockpit_screens_system, exit_on_esc,
-    update_celestial_labels_system, update_hud_system,
-};
 use flight::{
     autopilot_flight_system, autopilot_input_system, celestial_collision_system, hide_cursor_system,
     orbit_asteroids_system, orbit_moons_system, orbit_planets_system, pilot_freelook_system,
     ship_flight_system, stop_engine_input_system,
 };
+use hud::{exit_on_esc, update_celestial_labels_system, update_hud_system};
+use particles::{setup_particle_assets, thruster_particle_system, update_thruster_particles_system};
 use rendering::{logarithmic_distance_render_system, update_planet_area_lights_system};
 use resources::{AppState, AutoPilotState, FlightState, LoadingAssets};
 use scene::{check_loading_status, setup_loading_screen, setup_scene};
@@ -49,7 +48,7 @@ fn main() {
             )
                 .run_if(in_state(AppState::Loading)),
         )
-        .add_systems(OnEnter(AppState::InGame), setup_scene)
+        .add_systems(OnEnter(AppState::InGame), (setup_scene, setup_particle_assets))
         .add_systems(
             Update,
             (
@@ -65,12 +64,13 @@ fn main() {
                 hide_cursor_system,
                 exit_on_esc,
                 engine_sound_system,
-                animate_cockpit_screens_system,
-                animate_cockpit_buttons_system,
+                thruster_particle_system,
+                update_thruster_particles_system,
                 update_hud_system,
             )
                 .run_if(in_state(AppState::InGame)),
         )
+
         .add_systems(
             PostUpdate,
             (

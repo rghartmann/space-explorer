@@ -58,9 +58,6 @@ pub struct PlanetAreaLight {
 }
 
 #[derive(Component)]
-pub struct RadarSweepNeedle;
-
-#[derive(Component)]
 pub struct AutoPilotHudText;
 
 #[derive(Component)]
@@ -80,23 +77,6 @@ pub struct CelestialLabel {
     pub target_type: CelestialTargetType,
 }
 
-#[derive(Component, PartialEq, Eq, Clone, Copy)]
-pub enum CockpitButtonType {
-    Thruster,
-    Warp,
-    Shields,
-    AutoNav,
-    Alert,
-    OrbitStop,
-}
-
-#[derive(Component)]
-pub struct CockpitButton {
-    pub button_type: CockpitButtonType,
-    pub base_emissive: LinearRgba,
-    pub active_emissive: LinearRgba,
-}
-
 #[derive(Component)]
 pub struct Asteroid {
     pub radius: f32,
@@ -110,4 +90,34 @@ pub struct SpaceDust {
     pub world_pos: Vec3,
     pub size_scale: f32,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmitterType {
+    LeftEngine,
+    RightEngine,
+    CenterBoost,
+}
+
+#[derive(Component)]
+pub struct ThrusterEmitter {
+    pub emitter_type: EmitterType,
+}
+
+#[derive(Component)]
+pub struct ThrusterLight {
+    pub emitter_type: EmitterType,
+}
+
+#[derive(Component)]
+pub struct ThrusterParticle {
+    pub velocity: Vec3,
+    pub lifetime: f32,
+    pub max_lifetime: f32,
+    pub initial_scale: f32,
+    pub target_scale: f32,
+    pub is_boost: bool,
+    pub is_ring: bool,
+}
+
+
 

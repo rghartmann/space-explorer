@@ -134,15 +134,20 @@ pub fn pilot_freelook_system(
         }
     }
 
-    // Dynamic cockpit camera lean for pilot perspective
-    let lean_yaw = -flight_state.angular_velocity.x * 0.2;
-    let lean_pitch = -flight_state.angular_velocity.y * 0.2;
-    let lean_roll = -flight_state.angular_velocity.x * 0.35;
+    // Dynamic 3rd person camera banking & sway for realistic spaceship flight feel
+    let lean_yaw = -flight_state.angular_velocity.x * 0.15;
+    let lean_pitch = -flight_state.angular_velocity.y * 0.15;
+    let lean_roll = -flight_state.angular_velocity.x * 0.25;
 
     if let Ok(mut cam_transform) = camera_query.single_mut() {
-        let target_cam_rot = Quat::from_euler(EulerRot::YXZ, lean_yaw, lean_pitch, lean_roll);
+        let base_pos = Vec3::new(0.0, 1.2, 4.0);
+        let base_rot = Quat::from_rotation_x(-0.16);
+        let dynamic_rot = Quat::from_euler(EulerRot::YXZ, lean_yaw, lean_pitch, lean_roll);
+        let target_rot = base_rot * dynamic_rot;
         let cam_decay = 1.0 - (-8.0 * dt).exp();
-        cam_transform.rotation = cam_transform.rotation.slerp(target_cam_rot, cam_decay);
+        cam_transform.rotation = cam_transform.rotation.slerp(target_rot, cam_decay);
+        let target_pos = base_pos + Vec3::new(-flight_state.angular_velocity.x * 3.0, flight_state.angular_velocity.y * 2.0, 0.0);
+        cam_transform.translation = cam_transform.translation.lerp(target_pos, cam_decay);
     }
 }
 

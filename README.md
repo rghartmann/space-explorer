@@ -1,12 +1,12 @@
 # Space Explorer - Solar System Simulator
 
-**Space Explorer** is an immersive 3D real-time space flight simulator built in Rust powered by the Bevy Engine. Step into the pilot seat of an advanced starship cockpit and navigate across realistic astronomical scale model representations of our Solar System—from the central Sun out to distant Kuiper Belt dwarf planets.
+**Space Explorer** is an immersive 3D real-time space flight simulator built in Rust powered by the Bevy Engine. Command a 3D starship avatar rendered from a custom Blender model in 3rd-person perspective, and navigate across realistic astronomical scale model representations of our Solar System—from the central Sun out to distant Kuiper Belt dwarf planets.
 
 ---
 
 ## Features
 
-- **First-Person Sci-Fi Cockpit**: Experience real-time space flight with an ergonomic, low-profile 3D dashboard featuring tactical radar displays, ship diagnostics, illuminated console switches, and an observation canopy.
+- **3rd-Person Spaceship Avatar & Camera**: Experience real-time space flight from a sleek 3rd-person camera perspective anchored behind a detailed 3D starship avatar (rendered from `assets/models/spaceship.blend`).
 - **Solar System Scale**: Explore the Sun, 8 major planets, major moons (Moon, Io, Europa, Charon), and dwarf planets (Ceres, Pluto, Haumea, Makemake, Eris) alongside procedural main belt asteroids and space dust clouds.
 - **Logarithmic Render Engine**: Hybrid rendering pipeline smoothly blending physical 1:1 scale (close proximity) with logarithmic depth mapping (deep space) to visualize astronomical distances without precision loss.
 - **Flight & Orbital Mechanics**:
@@ -58,9 +58,9 @@ This project incorporates public domain science datasets, NASA planetary maps, a
 - **Deep Space Skybox Spheremap**:
   - High-resolution 10K panoramic starfield spheremap courtesy of **European Southern Observatory (ESO)** and **NASA Deep Space Imagery**.
 
-### 🎛️ Cockpit Interfaces & UI Graphics
-- **Sci-Fi Control Panel, Radar & Diagnostics Display Textures**:
-  - Custom sci-fi dashboard interface graphics and emissive button textures generated for Space Explorer.
+### 🚀 3D Spaceship Model
+- **Spaceship Avatar**:
+  - Rendered from custom Blender 3D model (`assets/models/spaceship.blend`).
 
 ### 🔊 Audio & Soundscapes
 - **Ambient Space Music (`ambient_piano.wav`)**:
