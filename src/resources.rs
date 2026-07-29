@@ -32,15 +32,24 @@ pub struct FlightState {
     pub target_roll: f32,  // Target look roll
     pub boost_mode: bool,  // Boost mode active state (toggled via Space)
     pub rapid_decel: bool, // Rapid deceleration state after exiting boost
+    pub orbit_roll: f32,   // Roll angle maintained during orbit mode
 }
 
 #[derive(Resource, Default)]
 pub struct AutoPilotState {
     pub active: bool,
-    pub target_index: Option<usize>,
-    pub target_name: &'static str,
+    pub destination_index: Option<usize>,
+    pub destination_name: &'static str,
     pub arrived: bool,
     pub engine_stopped: bool,
-    pub prev_target_pos: Option<Vec3>,
+    pub prev_destination_pos: Option<Vec3>,
+    pub current_waypoint: Option<Vec3>,     // Waypoint for path-finding avoidance
+    pub positioning_timer: f32,             // Delay timer when positioning into orbit
+    pub positioning_in_progress: bool,      // Positioning transition flag
+    pub leaving_orbit_timer: f32,           // Delay timer when leaving orbit
+    pub leaving_orbit_in_progress: bool,    // Leaving orbit transition flag
+    pub orbit_speed_multiplier: f32,        // Controlled by W/S in orbit mode
+    pub entering_orbit_timer: f32,          // Timer for center "Entering Orbit Mode" popup label
 }
+
 

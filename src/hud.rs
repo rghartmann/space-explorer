@@ -2,7 +2,7 @@ use bevy::ecs::message::MessageWriter;
 use bevy::prelude::*;
 
 use crate::components::{
-    AutoPilotHudText, CelestialLabel, CelestialTargetType, Moon, PilotCamera, Planet, Sun,
+    AutoPilotHudText, CelestialDestinationType, CelestialLabel, EnteringOrbitLabel, Moon, OrbitModeBanner, OrbitModeInfoText, PilotCamera, Planet, Sun,
 };
 use crate::resources::{AutoPilotState, FlightState};
 
@@ -19,7 +19,10 @@ pub fn update_hud_system(
     autopilot: Res<AutoPilotState>,
     flight_state: Res<FlightState>,
     planet_query: Query<&Planet>,
-    mut text_query: Query<&mut Text, With<AutoPilotHudText>>,
+    moon_query: Query<&Moon>,
+    mut text_query: Query<&mut Text, (With<AutoPilotHudText>, Without<OrbitModeInfoText>)>,
+    mut orbit_query: Query<(&mut Node, &mut Visibility, &mut Text), (With<OrbitModeBanner>, With<OrbitModeInfoText>)>,
+    mut entering_orbit_query: Query<&mut Visibility, (With<EnteringOrbitLabel>, Without<OrbitModeBanner>, Without<AutoPilotHudText>)>,
 ) {
     let speed = flight_state.velocity.length();
     let speed_of_light = 299_792.458;
@@ -37,49 +40,132 @@ pub fn update_hud_system(
         format!("{:.0} km/s", speed)
     };
 
+    let is_in_orbit = autopilot.active
+        && (autopilot.arrived || autopilot.engine_stopped || autopilot.positioning_in_progress);
+
     for mut text in &mut text_query {
         if autopilot.active {
-            if let Some(target_idx) = autopilot.target_index {
+            if let Some(destination_idx) = autopilot.destination_index {
                 let mut dist_str = String::from("CALCULATING...");
+                let mut dest_world_pos = None;
 
-                if target_idx == 0 {
-                    let dist = flight_state.world_pos.distance(Vec3::ZERO);
-                    dist_str = format!("{:.0} km", dist * 10.0);
+                if destination_idx == 0 {
+                    dest_world_pos = Some(Vec3::ZERO);
+                } else if destination_idx == 100 {
+                    for moon in &moon_query {
+                        if moon.name == autopilot.destination_name {
+                            dest_world_pos = Some(moon.world_pos);
+                            break;
+                        }
+                    }
                 } else {
                     for planet in &planet_query {
-                        if planet.index == target_idx {
-                            let dist = flight_state.world_pos.distance(planet.world_pos);
-                            dist_str = format!("{:.0} km", dist * 10.0);
+                        if planet.index == destination_idx {
+                            dest_world_pos = Some(planet.world_pos);
                             break;
                         }
                     }
                 }
 
-                let status_label = if autopilot.engine_stopped || autopilot.arrived {
-                    "IN PLANET ORBIT (MOUSE / WASD: ORBIT PITCH & YAW | Q/E: CLOSER/FARTHER | PRESS [O] TO LEAVE ORBIT)"
+                if let Some(dest_pos) = dest_world_pos {
+                    let dist = flight_state.world_pos.distance(dest_pos);
+                    dist_str = format!("{:.0} km", dist * 10.0);
+                }
+
+                let eta_str = if is_in_orbit || autopilot.arrived || autopilot.engine_stopped {
+                    "ARRIVED".to_string()
+                } else if let Some(dest_pos) = dest_world_pos {
+                    let dist_km = flight_state.world_pos.distance(dest_pos) * 10.0;
+                    if speed < 0.1 {
+                        "N/A".to_string()
+                    } else {
+                        let eta_secs = dist_km / speed;
+                        if eta_secs < 60.0 {
+                            format!("{:.0}s", eta_secs)
+                        } else if eta_secs < 3600.0 {
+                            format!("{}m {:.0}s", (eta_secs / 60.0) as u32, eta_secs % 60.0)
+                        } else if eta_secs < 86400.0 {
+                            format!("{}h {}m", (eta_secs / 3600.0) as u32, ((eta_secs % 3600.0) / 60.0) as u32)
+                        } else {
+                            format!("{}d {}h", (eta_secs / 86400.0) as u32, ((eta_secs % 86400.0) / 3600.0) as u32)
+                        }
+                    }
+                } else {
+                    "N/A".to_string()
+                };
+
+                let status_label = if autopilot.positioning_in_progress {
+                    "POSITIONING FOR ORBIT INSERTION..."
+                } else if autopilot.leaving_orbit_in_progress {
+                    "DEPARTING ORBIT (EXITING...)"
+                } else if autopilot.engine_stopped || autopilot.arrived {
+                    "IN PLANET ORBIT — 3D HEIGHTMAP SURFACE LOD 100% ACTIVE"
+                } else if autopilot.current_waypoint.is_some() {
+                    "EN ROUTE (BYPASSING OBSTACLE VIA PATH-FINDING)"
                 } else {
                     "EN ROUTE TO DESTINATION"
                 };
 
                 **text = format!(
-                    "AUTOPILOT: [{}] TARGET: {} | DISTANCE: {} | SPEED: {} | STATUS: {}",
-                    target_idx,
-                    autopilot.target_name.to_uppercase(),
+                    "AUTOPILOT: DESTINATION: {} | DISTANCE: {} | SPEED: {} | ETA: {} | STATUS: {}",
+                    autopilot.destination_name.to_uppercase(),
                     dist_str,
                     speed_str,
+                    eta_str,
                     status_label
                 );
             }
+        } else if autopilot.leaving_orbit_in_progress {
+            **text = format!(
+                "FLIGHT STATUS: DEPARTING ORBIT | SPEED: {} | DISENGAGING ORBITAL LOCK & REVERTING LOD...",
+                speed_str
+            );
         } else {
             let mode_hint = if flight_state.boost_mode {
                 "BOOST MODE | PRESS SPACE AGAIN TO BRAKE QUICKLY"
             } else {
-                "W/S: ACCEL/DECEL | MOUSE/ARROWS: STEER | Q/E or Z/C: ROLL | SPACE: WARP BOOST | [0-9]: AUTOPILOT | [O]: ORBIT"
+                "W/S: ACCEL/DECEL | MOUSE/ARROWS: STEER | Z/C: ROLL | SPACE: WARP BOOST | [0-9/C/H/K/E/M]: AUTOPILOT | [O]: ORBIT"
             };
             **text = format!(
                 "FLIGHT STATUS: MANUAL CONTROL | SPEED: {} | {}",
                 speed_str, mode_hint
             );
+        }
+    }
+
+    let speed_mult = if autopilot.orbit_speed_multiplier <= 0.0 { 1.0 } else { autopilot.orbit_speed_multiplier };
+
+    for (mut node, mut vis, mut text) in &mut orbit_query {
+        if is_in_orbit {
+            let destination_name = autopilot.destination_name.to_uppercase();
+            let phase = if autopilot.positioning_in_progress {
+                "POSITIONING FOR ORBIT INSERTION"
+            } else {
+                "STABLE ORBITAL LOCK ACTIVE"
+            };
+            node.display = Display::Flex;
+            *vis = Visibility::Inherited;
+            **text = format!(
+                "ORBIT MODE: ENGAGED | DESTINATION: {} | SPEED: {:.2}x | STATUS: {} | CONTROLS: [W/S] Speed | [A/D] Orbit Yaw | [Z/C] Ship Roll | [Q/E] Range | [O] Exit Orbit",
+                destination_name, speed_mult, phase
+            );
+        } else if autopilot.leaving_orbit_in_progress {
+            node.display = Display::Flex;
+            *vis = Visibility::Inherited;
+            **text = format!(
+                "ORBIT MODE: DISENGAGING... | REVERTING RENDER MODE & DISENGAGING ORBITAL LOCK"
+            );
+        } else {
+            node.display = Display::None;
+            *vis = Visibility::Hidden;
+        }
+    }
+
+    for mut vis in &mut entering_orbit_query {
+        if autopilot.entering_orbit_timer > 0.0 {
+            *vis = Visibility::Inherited;
+        } else {
+            *vis = Visibility::Hidden;
         }
     }
 }
@@ -112,12 +198,12 @@ pub fn update_celestial_labels_system(
 
     // 1. Project celestial body 3D positions to 2D viewport coordinates and update text
     for (entity, label, _node, _vis, children) in &label_query {
-        let (body_world_pos, rendered_transform_pos) = match label.target_type {
-            CelestialTargetType::Sun => {
+        let (body_world_pos, rendered_transform_pos) = match label.destination_type {
+            CelestialDestinationType::Sun => {
                 let Ok((_sun, transform)) = sun_query.single() else { continue; };
                 (Vec3::ZERO, transform.translation)
             }
-            CelestialTargetType::Planet(idx) => {
+            CelestialDestinationType::Planet(idx) => {
                 let mut found = None;
                 for (planet, transform) in &planet_query {
                     if planet.index == idx {
@@ -128,7 +214,7 @@ pub fn update_celestial_labels_system(
                 let Some(data) = found else { continue; };
                 data
             }
-            CelestialTargetType::Moon(mname) => {
+            CelestialDestinationType::Moon(mname) => {
                 let mut found = None;
                 for (moon, transform) in &moon_query {
                     if moon.name == mname {
@@ -200,8 +286,8 @@ pub fn update_celestial_labels_system(
     }
 
     let mut placed_rects: Vec<LabelRect> = vec![
-        // Top HUD banner area obstacle
-        LabelRect { x: 10.0, y: 10.0, w: 780.0, h: 80.0 },
+        // Top HUD banner area obstacle (reduced height)
+        LabelRect { x: 10.0, y: 10.0, w: 780.0, h: 55.0 },
     ];
 
     let mut resolved_positions: std::collections::HashMap<Entity, Vec2> = std::collections::HashMap::new();

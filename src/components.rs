@@ -53,7 +53,7 @@ pub struct SkyboxSphere;
 
 #[derive(Component)]
 pub struct PlanetAreaLight {
-    pub target_world_pos: Vec3,
+    pub destination_world_pos: Vec3,
     pub planet_radius: f32,
 }
 
@@ -61,10 +61,16 @@ pub struct PlanetAreaLight {
 pub struct AutoPilotHudText;
 
 #[derive(Component)]
-pub struct StopEngineButton;
+pub struct OrbitModeBanner;
+
+#[derive(Component)]
+pub struct OrbitModeInfoText;
+
+#[derive(Component)]
+pub struct EnteringOrbitLabel;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum CelestialTargetType {
+pub enum CelestialDestinationType {
     Sun,
     Planet(usize),
     Moon(&'static str),
@@ -74,7 +80,7 @@ pub enum CelestialTargetType {
 pub struct CelestialLabel {
     pub name: &'static str,
     pub key_prefix: &'static str,
-    pub target_type: CelestialTargetType,
+    pub destination_type: CelestialDestinationType,
 }
 
 #[derive(Component)]

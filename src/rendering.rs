@@ -280,7 +280,7 @@ pub fn update_planet_area_lights_system(
         } else if let Ok((moon, m_trans)) = moon_query.get(parent_entity) {
             (moon.world_pos, moon.radius, m_trans.rotation, m_trans.scale.x)
         } else {
-            (area_light.target_world_pos, area_light.planet_radius, Quat::IDENTITY, 1.0)
+            (area_light.destination_world_pos, area_light.planet_radius, Quat::IDENTITY, 1.0)
         };
 
         let sun_dir_world = -world_pos.normalize_or_zero();

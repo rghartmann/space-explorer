@@ -203,30 +203,40 @@ pub fn thruster_particle_system(
 
     let dt = time.delta_secs();
     let is_boosting = flight_state.boost_mode;
+    let speed = flight_state.velocity.length();
+    let is_moving = speed > 0.1;
     let is_accelerating = keyboard.pressed(KeyCode::KeyW) || (autopilot.active && !autopilot.arrived && !autopilot.engine_stopped);
+
+    if !is_boosting && !is_moving && !is_accelerating {
+        for (_, mut light) in &mut light_query {
+            light.intensity = light.intensity.lerp(0.0, (10.0 * dt).min(1.0));
+        }
+        return;
+    }
+
+    let speed_cap = crate::flight::MAX_SPEED_CAP;
+    let speed_factor = (speed / crate::flight::STANDARD_MAX_SPEED).clamp(0.1, 1.0);
+    let boost_factor = (speed / speed_cap).clamp(0.0, 1.0);
 
     // Dynamic light intensities and colors for thruster nozzles
     for (light_tag, mut light) in &mut light_query {
         if is_boosting {
             light.color = Color::srgb(0.95, 0.3, 1.0);
-            let target_intensity = if light_tag.emitter_type == EmitterType::CenterBoost { 18_000.0 } else { 12_000.0 };
-            light.intensity = light.intensity.lerp(target_intensity, (15.0 * dt).min(1.0));
+            let target_intensity = if light_tag.emitter_type == EmitterType::CenterBoost { 20_000.0 } else { 14_000.0 };
+            light.intensity = light.intensity.lerp(target_intensity * (0.5 + 0.5 * boost_factor), (15.0 * dt).min(1.0));
             light.range = 10.0;
-        } else if is_accelerating {
+        } else if is_moving || is_accelerating {
             if light_tag.emitter_type == EmitterType::CenterBoost {
                 light.intensity = light.intensity.lerp(0.0, (15.0 * dt).min(1.0));
             } else {
                 light.color = Color::srgb(0.2, 0.8, 1.0);
-                light.intensity = light.intensity.lerp(7_000.0, (15.0 * dt).min(1.0));
-                light.range = 6.0;
+                let target_intensity = 3_000.0 + speed_factor * 6_000.0;
+                light.intensity = light.intensity.lerp(target_intensity, (15.0 * dt).min(1.0));
+                light.range = 4.0 + speed_factor * 3.0;
             }
         } else {
             light.intensity = light.intensity.lerp(0.0, (10.0 * dt).min(1.0));
         }
-    }
-
-    if !is_boosting && !is_accelerating {
-        return;
     }
 
     let seed = (time.elapsed_secs_f64() * 100000.0) as u32;
@@ -255,7 +265,7 @@ pub fn thruster_particle_system(
             );
             let spawn_pos = origin_pos + offset_jitter;
 
-            let (mesh_handle, mat_handle, speed, lifetime, initial_scale, target_scale, is_ring) = if is_boosting {
+            let (mesh_handle, mat_handle, particle_speed, lifetime, initial_scale, target_scale, is_ring) = if is_boosting {
                 let is_core = rng.gen_bool(0.3);
                 let is_ring = rng.gen_bool(0.15);
 
@@ -263,17 +273,17 @@ pub fn thruster_particle_system(
                     (
                         assets.ring_mesh.clone(),
                         assets.boost_ring_mat.clone(),
-                        rng.gen_range(12.0..20.0),
+                        rng.gen_range(16.0..28.0),
                         rng.gen_range(0.2..0.4),
                         0.08,
-                        0.45,
+                        0.50,
                         true,
                     )
                 } else if is_core {
                     (
                         assets.sphere_mesh.clone(),
                         assets.core_mat.clone(),
-                        rng.gen_range(14.0..26.0),
+                        rng.gen_range(18.0..32.0),
                         rng.gen_range(0.1..0.22),
                         0.14,
                         0.02,
@@ -283,7 +293,7 @@ pub fn thruster_particle_system(
                     (
                         assets.sphere_mesh.clone(),
                         assets.boost_mat.clone(),
-                        rng.gen_range(10.0..22.0),
+                        rng.gen_range(14.0..28.0),
                         rng.gen_range(0.18..0.35),
                         0.18,
                         0.04,
@@ -292,13 +302,15 @@ pub fn thruster_particle_system(
                 }
             } else {
                 let is_core = rng.gen_bool(0.35);
+                let base_speed = rng.gen_range(4.0..10.0) + speed_factor * 8.0;
+                let particle_scale = (0.08 + speed_factor * 0.08).clamp(0.06, 0.16);
                 if is_core {
                     (
                         assets.sphere_mesh.clone(),
                         assets.core_mat.clone(),
-                        rng.gen_range(8.0..15.0),
+                        base_speed * 1.3,
                         rng.gen_range(0.08..0.18),
-                        0.10,
+                        particle_scale * 0.8,
                         0.02,
                         false,
                     )
@@ -306,20 +318,18 @@ pub fn thruster_particle_system(
                     (
                         assets.sphere_mesh.clone(),
                         assets.normal_mat.clone(),
-                        rng.gen_range(5.0..12.0),
+                        base_speed,
                         rng.gen_range(0.12..0.25),
-                        0.14,
+                        particle_scale,
                         0.03,
                         false,
                     )
                 }
             };
 
-
-            // Emission direction: backward relative to ship orientation (+Z local)
             let spread_x = rng.gen_range(-0.15..0.15);
             let spread_y = rng.gen_range(-0.15..0.15);
-            let local_vel = Vec3::new(spread_x * speed, spread_y * speed, speed);
+            let local_vel = Vec3::new(spread_x * particle_speed, spread_y * particle_speed, particle_speed);
 
             let particle_entity = commands
                 .spawn((
@@ -336,7 +346,6 @@ pub fn thruster_particle_system(
                         is_boost: is_boosting,
                         is_ring,
                     },
-
                 ))
                 .id();
 
