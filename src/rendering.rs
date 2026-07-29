@@ -2,7 +2,9 @@ use bevy::prelude::*;
 
 use crate::components::{
     Asteroid, Moon, PilotCamera, Planet, PlanetAreaLight, Ship, SkyboxSphere, SpaceDust, Starfield, Sun,
+    SunDirectionalLight,
 };
+
 use crate::resources::FlightState;
 
 type SunRenderQueryFilter = (
@@ -299,3 +301,21 @@ pub fn update_planet_area_lights_system(
         light.intensity = (15_000_000.0 * factor).max(200_000.0);
     }
 }
+
+pub fn update_directional_sunlight_system(
+    flight_state: Res<FlightState>,
+    ship_query: Query<&Transform, With<Ship>>,
+    _camera_query: Query<&Transform, (With<PilotCamera>, Without<Ship>)>,
+    mut sun_light_query: Query<&mut Transform, (With<SunDirectionalLight>, Without<Ship>, Without<PilotCamera>)>,
+) {
+    let Ok(ship_transform) = ship_query.single() else { return; };
+    let cam_pos = flight_state.world_pos + ship_transform.rotation * Vec3::new(0.0, 1.2, 4.0);
+
+    let dir_to_sun = (-cam_pos).normalize_or_zero();
+    if dir_to_sun != Vec3::ZERO {
+        for mut light_transform in &mut sun_light_query {
+            *light_transform = Transform::IDENTITY.looking_at(dir_to_sun, Vec3::Y);
+        }
+    }
+}
+

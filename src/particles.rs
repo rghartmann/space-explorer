@@ -50,7 +50,7 @@ pub fn setup_particle_assets(
     // Cyan/Blue plasma material for standard thrusters
     let normal_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(0.2, 0.85, 1.0, 0.85),
-        emissive: LinearRgba::new(0.5, 2.5, 5.0, 1.0),
+        emissive: LinearRgba::new(2.0, 18.0, 45.0, 1.0),
         unlit: true,
         alpha_mode: AlphaMode::Add,
         ..default()
@@ -59,7 +59,7 @@ pub fn setup_particle_assets(
     // Intense White-Core material for inner nozzle flame
     let core_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(1.0, 1.0, 1.0, 0.95),
-        emissive: LinearRgba::new(8.0, 8.0, 8.0, 1.0),
+        emissive: LinearRgba::new(60.0, 60.0, 60.0, 1.0),
         unlit: true,
         alpha_mode: AlphaMode::Add,
         ..default()
@@ -68,7 +68,7 @@ pub fn setup_particle_assets(
     // Magenta/Violet warp boost material for FTL 1.5x c mode
     let boost_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(1.0, 0.25, 0.95, 0.9),
-        emissive: LinearRgba::new(5.0, 0.8, 4.5, 1.0),
+        emissive: LinearRgba::new(45.0, 6.0, 40.0, 1.0),
         unlit: true,
         alpha_mode: AlphaMode::Add,
         ..default()
@@ -77,11 +77,12 @@ pub fn setup_particle_assets(
     // FTL Shockwave ring material
     let boost_ring_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(0.85, 0.4, 1.0, 0.75),
-        emissive: LinearRgba::new(4.0, 1.2, 6.0, 1.0),
+        emissive: LinearRgba::new(30.0, 10.0, 50.0, 1.0),
         unlit: true,
         alpha_mode: AlphaMode::Add,
         ..default()
     });
+
 
     commands.insert_resource(ParticleAssets {
         sphere_mesh,

@@ -21,7 +21,9 @@ use flight::{
 use hud::{exit_on_esc, update_celestial_labels_system, update_hud_system};
 use lod::PlanetLodPlugin;
 use particles::{setup_particle_assets, thruster_particle_system, update_thruster_particles_system};
-use rendering::{logarithmic_distance_render_system, update_planet_area_lights_system};
+use rendering::{
+    logarithmic_distance_render_system, update_directional_sunlight_system, update_planet_area_lights_system,
+};
 use resources::{AppState, AutoPilotState, FlightState, LoadingAssets};
 use scene::{check_loading_status, setup_loading_screen, setup_scene};
 
@@ -78,11 +80,12 @@ fn main() {
             PostUpdate,
             (
                 logarithmic_distance_render_system.before(TransformSystems::Propagate),
+                update_directional_sunlight_system.before(TransformSystems::Propagate),
                 update_planet_area_lights_system.before(TransformSystems::Propagate),
-                update_celestial_labels_system,
+                update_celestial_labels_system.after(TransformSystems::Propagate),
             )
-                .chain()
                 .run_if(in_state(AppState::InGame)),
         )
         .run();
 }
+

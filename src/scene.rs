@@ -1,3 +1,6 @@
+use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::light::CascadeShadowConfigBuilder;
+use bevy::post_process::bloom::{Bloom, BloomPrefilter};
 use bevy::prelude::*;
 
 use crate::audio::{ensure_ambient_piano_file, ensure_engine_hum_file};
@@ -22,15 +25,11 @@ pub fn setup_scene(
         (orbit_rng as f32 / u64::MAX as f32) * std::f32::consts::TAU
     };
 
-    // 2D HUD CAMERA & OVERLAY UI (Rendered on top of 3D scene)
-    commands.spawn((
-        Camera2d,
-        Camera {
-            order: 1,
-            clear_color: ClearColorConfig::None,
-            ..default()
-        },
-    ));
+
+
+
+
+
 
     commands
         .spawn((
@@ -239,20 +238,32 @@ pub fn setup_scene(
                 order: 0,
                 ..default()
             },
+            Tonemapping::default(),
+            Bloom {
+                intensity: 0.25,
+                low_frequency_boost: 0.5,
+                high_pass_frequency: 1.0,
+                prefilter: BloomPrefilter {
+                    threshold: 1.0,
+                    threshold_softness: 0.2,
+                },
+                ..default()
+            },
             Projection::Perspective(PerspectiveProjection {
                 near: 0.1,
-                far: 120_000.0,
+                far: 150_000.0,
                 ..default()
             }),
             Transform::from_xyz(0.0, 1.2, 4.0)
                 .looking_at(Vec3::new(0.0, 0.1, -5.0), Vec3::Y),
             DistanceFog {
-                color: Color::srgba(0.002, 0.005, 0.015, 1.0),
-                falloff: FogFalloff::Exponential { density: 0.000003 },
+                color: Color::srgba(0.0005, 0.001, 0.003, 1.0),
+                falloff: FogFalloff::Exponential { density: 0.0000005 },
                 ..default()
             },
         ))
         .id();
+
     commands.entity(ship_entity).add_child(camera_entity);
 
     // Soft Fill Light for 3D Spaceship PBR Texture Visibility
@@ -269,6 +280,36 @@ pub fn setup_scene(
         ))
         .id();
     commands.entity(ship_entity).add_child(ship_light);
+
+    // Ambient Fill Light for deep space
+    commands.spawn(AmbientLight {
+        color: Color::srgba(0.03, 0.04, 0.08, 1.0),
+        brightness: 120.0,
+        affects_lightmapped_meshes: false,
+    });
+
+    // Dynamic Sunlight (Cascaded Directional Shadow Light)
+    let cascade_config = CascadeShadowConfigBuilder {
+        num_cascades: 4,
+        maximum_distance: 30_000.0,
+        minimum_distance: 0.1,
+        first_cascade_far_bound: 15.0,
+        overlap_proportion: 0.2,
+    }.build();
+
+    commands.spawn((
+        SunDirectionalLight,
+        DirectionalLight {
+            color: Color::srgb(1.0, 0.97, 0.92),
+            illuminance: 100_000.0,
+            shadow_maps_enabled: true,
+            contact_shadows_enabled: true,
+            ..default()
+        },
+        cascade_config,
+        Transform::IDENTITY,
+    ));
+
 
     // ----------------------------------------------------
     // 2. THE SUN (NASA HIGH-RES RADIANT SURFACE & COLOSSAL SOLAR CORONA)
@@ -381,6 +422,23 @@ pub fn setup_scene(
     )).id();
     spawn_planet_area_light(&mut commands, venus_entity, venus_pos, 285.0);
 
+    // Venus Atmospheric Scattering Shell
+    let venus_atmo_mesh = meshes.add(create_uv_sphere(292.0, 96, 48));
+    let venus_atmo_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.9, 0.75, 0.4, 0.28),
+        emissive: LinearRgba::new(2.5, 1.8, 0.5, 1.0),
+        alpha_mode: AlphaMode::Blend,
+        double_sided: true,
+        cull_mode: None,
+        ..default()
+    });
+    let venus_atmo = commands.spawn((
+        Mesh3d(venus_atmo_mesh),
+        MeshMaterial3d(venus_atmo_mat),
+        Transform::IDENTITY,
+    )).id();
+    commands.entity(venus_entity).add_child(venus_atmo);
+
     // --- PLANET 3: EARTH & MOON (1.0000 AU) ---
     let earth_orbit_radius = temp_earth_radius;
     let earth_orbit_speed = 0.08;
@@ -415,6 +473,24 @@ pub fn setup_scene(
         Transform::from_translation(earth_pos),
     )).id();
     spawn_planet_area_light(&mut commands, earth_entity, earth_pos, 300.0);
+
+    // Earth Atmospheric Rayleigh Scattering Glow Shell
+    let earth_atmo_mesh = meshes.add(create_uv_sphere(307.5, 128, 64));
+    let earth_atmo_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.2, 0.55, 1.0, 0.35),
+        emissive: LinearRgba::new(0.8, 2.5, 6.0, 1.0),
+        alpha_mode: AlphaMode::Blend,
+        double_sided: true,
+        cull_mode: None,
+        ..default()
+    });
+    let earth_atmo = commands.spawn((
+        Mesh3d(earth_atmo_mesh),
+        MeshMaterial3d(earth_atmo_mat),
+        Transform::IDENTITY,
+    )).id();
+    commands.entity(earth_entity).add_child(earth_atmo);
+
 
     // Position ship near Earth's starting position facing Sun
     flight_state.world_pos = initial_spawn_pos;
@@ -1263,7 +1339,7 @@ pub fn setup_loading_screen(
     }
 
     commands.spawn((
-        Camera2d,
+        Camera2d::default(),
         Camera {
             order: 100,
             clear_color: ClearColorConfig::Custom(Color::srgb(0.001, 0.001, 0.003)),
@@ -1271,6 +1347,7 @@ pub fn setup_loading_screen(
         },
         LoadingScreenUI,
     ));
+
 
     commands
         .spawn((
@@ -1341,6 +1418,8 @@ pub fn check_loading_status(
         }
         next_state.set(AppState::InGame);
     }
+
+
 }
 
 #[allow(dead_code)]

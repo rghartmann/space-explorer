@@ -125,5 +125,9 @@ pub struct ThrusterParticle {
     pub is_ring: bool,
 }
 
+#[derive(Component)]
+pub struct SunDirectionalLight;
+
+
 
 
