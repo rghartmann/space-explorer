@@ -97,6 +97,7 @@ pub fn pilot_freelook_system(
 
         let mut yaw_input = -mouse_delta.x * sensitivity;
         let mut pitch_input = -mouse_delta.y * sensitivity;
+        let mut roll_input = 0.0;
 
         if keyboard.pressed(KeyCode::ArrowLeft) {
             yaw_input += key_speed;
@@ -118,11 +119,25 @@ pub fn pilot_freelook_system(
             if keyboard.pressed(KeyCode::KeyD) {
                 yaw_input -= key_speed;
             }
+            if keyboard.pressed(KeyCode::KeyQ) {
+                roll_input += key_speed;
+            }
+            if keyboard.pressed(KeyCode::KeyE) {
+                roll_input -= key_speed;
+            }
+        }
+
+        if keyboard.pressed(KeyCode::KeyZ) {
+            roll_input += key_speed;
+        }
+        if keyboard.pressed(KeyCode::KeyC) {
+            roll_input -= key_speed;
         }
 
         let rot_decay = 1.0 - (-12.0 * dt).exp();
         flight_state.angular_velocity.x = flight_state.angular_velocity.x.lerp(yaw_input, rot_decay);
         flight_state.angular_velocity.y = flight_state.angular_velocity.y.lerp(pitch_input, rot_decay);
+        flight_state.angular_velocity.z = flight_state.angular_velocity.z.lerp(roll_input, rot_decay);
 
         if !autopilot.arrived && !autopilot.engine_stopped {
             if flight_state.angular_velocity.x.abs() > 0.00001 {
@@ -131,13 +146,16 @@ pub fn pilot_freelook_system(
             if flight_state.angular_velocity.y.abs() > 0.00001 {
                 ship_transform.rotate_local_x(flight_state.angular_velocity.y);
             }
+            if flight_state.angular_velocity.z.abs() > 0.00001 {
+                ship_transform.rotate_local_z(flight_state.angular_velocity.z);
+            }
         }
     }
 
     // Dynamic 3rd person camera banking & sway for realistic spaceship flight feel
     let lean_yaw = -flight_state.angular_velocity.x * 0.15;
     let lean_pitch = -flight_state.angular_velocity.y * 0.15;
-    let lean_roll = -flight_state.angular_velocity.x * 0.25;
+    let lean_roll = -flight_state.angular_velocity.x * 0.25 - flight_state.angular_velocity.z * 0.20;
 
     if let Ok(mut cam_transform) = camera_query.single_mut() {
         let base_pos = Vec3::new(0.0, 1.2, 4.0);
@@ -890,5 +908,44 @@ mod tests {
         // Position should have rotated around the planet while maintaining orbit radius
         assert!(new_fs.world_pos != initial_ship_pos);
         assert!((new_dist - safe_boundary).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_z_axis_roll_controls() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<FlightState>();
+        app.init_resource::<AutoPilotState>();
+
+        let ship_entity = app.world_mut().spawn((Ship, Transform::IDENTITY)).id();
+
+        // Press KeyQ (Roll Left)
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        keyboard.press(KeyCode::KeyQ);
+        app.insert_resource(keyboard);
+
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(100));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(pilot_freelook_system);
+        schedule.run(app.world_mut());
+
+        let flight_state = app.world().resource::<FlightState>();
+        let ship_transform = app.world().entity(ship_entity).get::<Transform>().unwrap();
+
+        // Angular velocity Z should be non-zero (roll left)
+        assert!(
+            flight_state.angular_velocity.z > 0.0,
+            "Angular velocity Z should be positive when rolling left"
+        );
+        // Ship transform should have rotated around local Z axis
+        assert!(
+            ship_transform.rotation != Quat::IDENTITY,
+            "Ship transform rotation should change after Z-axis roll input"
+        );
     }
 }

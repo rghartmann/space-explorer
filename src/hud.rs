@@ -74,7 +74,7 @@ pub fn update_hud_system(
             let mode_hint = if flight_state.boost_mode {
                 "BOOST MODE | PRESS SPACE AGAIN TO BRAKE QUICKLY"
             } else {
-                "W/S: ACCEL/DECEL | MOUSE/ARROWS: STEER | SPACE: WARP BOOST | [0-9]: AUTOPILOT | [O]: ORBIT"
+                "W/S: ACCEL/DECEL | MOUSE/ARROWS: STEER | Q/E or Z/C: ROLL | SPACE: WARP BOOST | [0-9]: AUTOPILOT | [O]: ORBIT"
             };
             **text = format!(
                 "FLIGHT STATUS: MANUAL CONTROL | SPEED: {} | {}",
