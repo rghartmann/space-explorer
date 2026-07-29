@@ -649,8 +649,9 @@ pub fn autopilot_flight_system(
 
         let mut new_dir = safe_dir;
 
-        // Horiz (yaw) rot angle combines mouse X delta and Key A/D input
-        let horiz_rot_angle = (-mouse_delta.x * mouse_sens) + (horiz_key_input * orbit_speed * dt);
+        // Base automatic orbital revolution rate + manual Key A/D and mouse input
+        let auto_orbit_rate = 1.0;
+        let horiz_rot_angle = (-mouse_delta.x * mouse_sens) + ((auto_orbit_rate + horiz_key_input) * orbit_speed * dt);
         if horiz_rot_angle != 0.0 {
             let rot_quat = Quat::from_rotation_y(horiz_rot_angle);
             new_dir = rot_quat * new_dir;
@@ -687,11 +688,7 @@ pub fn autopilot_flight_system(
             Vec3::ZERO
         };
 
-        let is_input_active = mouse_delta.length_squared() > 0.1
-            || horiz_key_input != 0.0
-            || radial_input != 0.0
-            || keyboard.pressed(KeyCode::KeyW)
-            || keyboard.pressed(KeyCode::KeyS);
+        let is_input_active = true;
 
         if is_input_active {
             let mut orbit_tangent = Vec3::ZERO;
