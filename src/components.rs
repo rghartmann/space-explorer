@@ -28,7 +28,6 @@ pub struct SunAnimation {
 }
 
 #[derive(Component)]
-#[allow(dead_code)]
 pub struct Planet {
     pub name: &'static str,
     pub index: usize, // 1 to 8

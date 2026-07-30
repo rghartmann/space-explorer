@@ -210,7 +210,7 @@ pub fn setup_scene(
     let initial_spawn_dist = 2.200000 * AU;
     let initial_spawn_pos = earth_pos.normalize() * initial_spawn_dist + Vec3::new(0.0, 150_000.0, 0.0);
     let dir_to_earth = (earth_pos - initial_spawn_pos).normalize_or_zero();
-    let initial_ship_rot = Quat::from_rotation_arc(Vec3::NEG_Z, dir_to_earth);
+    let initial_ship_rot = crate::flight::rotation_looking_to(dir_to_earth);
 
     flight_state.world_pos = initial_spawn_pos;
     flight_state.previous_pos = initial_spawn_pos;
@@ -408,6 +408,7 @@ pub fn setup_scene(
             rotation_speed: 0.00005, // 58.65d spin
             world_pos: mercury_pos,
         },
+        PlanetLod::new(1, false, "", 18.0, mercury_tex.clone(), 192, 96),
         Mesh3d(mercury_mesh),
         MeshMaterial3d(mercury_mat),
         Transform::from_translation(mercury_pos),
@@ -437,6 +438,7 @@ pub fn setup_scene(
             rotation_speed: -0.00001, // Retrograde spin (243d)
             world_pos: venus_pos,
         },
+        PlanetLod::new(2, false, "", 22.0, venus_tex.clone(), 192, 96),
         Mesh3d(venus_mesh),
         MeshMaterial3d(venus_mat),
         Transform::from_translation(venus_pos),
@@ -463,6 +465,7 @@ pub fn setup_scene(
             rotation_speed: 0.002, // 24h spin
             world_pos: earth_pos,
         },
+        PlanetLod::new(3, false, "", 25.0, earth_tex.clone(), 192, 96),
         Mesh3d(earth_mesh),
         MeshMaterial3d(earth_mat),
         Transform::from_translation(earth_pos),
@@ -507,6 +510,7 @@ pub fn setup_scene(
             rotation_speed: 0.0547, // Synchronous rotation
             world_pos: moon_pos,
         },
+        PlanetLod::new(3, true, "Moon", 12.0, moon_tex.clone(), 96, 48),
         Mesh3d(moon_mesh),
         MeshMaterial3d(moon_mat),
         Transform::from_translation(moon_pos),
@@ -536,6 +540,7 @@ pub fn setup_scene(
             rotation_speed: 0.0019, // 24.6h spin
             world_pos: mars_pos,
         },
+        PlanetLod::new(4, false, "", 20.0, mars_tex.clone(), 192, 96),
         Mesh3d(mars_mesh),
         MeshMaterial3d(mars_mat),
         Transform::from_translation(mars_pos),
@@ -565,6 +570,7 @@ pub fn setup_scene(
             rotation_speed: 0.005, // 9h spin
             world_pos: ceres_pos,
         },
+        PlanetLod::new(10, false, "", 8.0, ceres_tex.clone(), 96, 48),
         Mesh3d(ceres_mesh),
         MeshMaterial3d(ceres_mat),
         Transform::from_translation(ceres_pos).with_scale(Vec3::new(1.0, 0.923, 1.0)),

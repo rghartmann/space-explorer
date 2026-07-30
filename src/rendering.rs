@@ -7,83 +7,15 @@ use crate::components::{
 
 use crate::resources::FlightState;
 
-type SunRenderQueryFilter = (
-    Without<Ship>,
-    Without<Planet>,
-    Without<Moon>,
-    Without<Asteroid>,
-    Without<SpaceDust>,
-    Without<Starfield>,
-    Without<SkyboxSphere>,
-    Without<PilotCamera>,
-    Without<PlanetAreaLight>,
-);
-type PlanetRenderQueryFilter = (
-    Without<Ship>,
-    Without<Sun>,
-    Without<Moon>,
-    Without<Asteroid>,
-    Without<SpaceDust>,
-    Without<Starfield>,
-    Without<SkyboxSphere>,
-    Without<PilotCamera>,
-    Without<PlanetAreaLight>,
-);
-type MoonRenderQueryFilter = (
-    Without<Ship>,
-    Without<Sun>,
-    Without<Planet>,
-    Without<Asteroid>,
-    Without<SpaceDust>,
-    Without<Starfield>,
-    Without<SkyboxSphere>,
-    Without<PilotCamera>,
-    Without<PlanetAreaLight>,
-);
-type AsteroidRenderQueryFilter = (
-    Without<Ship>,
-    Without<Sun>,
-    Without<Planet>,
-    Without<Moon>,
-    Without<SpaceDust>,
-    Without<Starfield>,
-    Without<SkyboxSphere>,
-    Without<PilotCamera>,
-    Without<PlanetAreaLight>,
-);
-type DustRenderQueryFilter = (
-    Without<Ship>,
-    Without<Sun>,
-    Without<Planet>,
-    Without<Moon>,
-    Without<Asteroid>,
-    Without<Starfield>,
-    Without<SkyboxSphere>,
-    Without<PilotCamera>,
-    Without<PlanetAreaLight>,
-);
-type StarRenderQueryFilter = (
-    Without<Ship>,
-    Without<Sun>,
-    Without<Planet>,
-    Without<Moon>,
-    Without<Asteroid>,
-    Without<SpaceDust>,
-    Without<SkyboxSphere>,
-    Without<PilotCamera>,
-    Without<PlanetAreaLight>,
-);
-type SkyboxRenderQueryFilter = (
-    Without<Ship>,
-    Without<Sun>,
-    Without<Planet>,
-    Without<Moon>,
-    Without<Asteroid>,
-    Without<SpaceDust>,
-    Without<Starfield>,
-    Without<PilotCamera>,
-    Without<PlanetAreaLight>,
-);
+type NonRenderObjectFilter = (Without<Ship>, Without<PilotCamera>, Without<PlanetAreaLight>);
+
+type SunRenderQueryFilter = (With<Sun>, Without<Planet>, Without<Moon>, Without<Asteroid>, Without<SpaceDust>, Without<Starfield>, Without<SkyboxSphere>, NonRenderObjectFilter);
+type PlanetRenderQueryFilter = (With<Planet>, Without<Sun>, Without<Moon>, Without<Asteroid>, Without<SpaceDust>, Without<Starfield>, Without<SkyboxSphere>, NonRenderObjectFilter);
+type MoonRenderQueryFilter = (With<Moon>, Without<Sun>, Without<Planet>, Without<Asteroid>, Without<SpaceDust>, Without<Starfield>, Without<SkyboxSphere>, NonRenderObjectFilter);
+type AsteroidRenderQueryFilter = (With<Asteroid>, Without<Sun>, Without<Planet>, Without<Moon>, Without<SpaceDust>, Without<Starfield>, Without<SkyboxSphere>, NonRenderObjectFilter);
+type DustRenderQueryFilter = (With<SpaceDust>, Without<Sun>, Without<Planet>, Without<Moon>, Without<Asteroid>, Without<Starfield>, Without<SkyboxSphere>, NonRenderObjectFilter);
+type StarRenderQueryFilter = (With<Starfield>, Without<Sun>, Without<Planet>, Without<Moon>, Without<Asteroid>, Without<SpaceDust>, Without<SkyboxSphere>, NonRenderObjectFilter);
+type SkyboxRenderQueryFilter = (With<SkyboxSphere>, Without<Sun>, Without<Planet>, Without<Moon>, Without<Asteroid>, Without<SpaceDust>, Without<Starfield>, NonRenderObjectFilter);
 
 use bevy::transform::TransformSystems;
 use crate::resources::AppState;
@@ -151,7 +83,7 @@ pub fn logarithmic_distance_render_system(
     mut asteroid_query: Query<(&Asteroid, &mut Transform, &mut Visibility), AsteroidRenderQueryFilter>,
     mut dust_query: Query<(&SpaceDust, &mut Transform, &mut Visibility), DustRenderQueryFilter>,
     mut star_query: Query<(&Starfield, &mut Transform, &mut Visibility), StarRenderQueryFilter>,
-    mut skybox_query: Query<&mut Transform, (With<SkyboxSphere>, SkyboxRenderQueryFilter)>,
+    mut skybox_query: Query<&mut Transform, SkyboxRenderQueryFilter>,
 ) {
     let Ok(ship_transform) = ship_query.single() else { return; };
     let Ok(cam_transform) = camera_query.single() else { return; };
