@@ -13,7 +13,7 @@ pub fn setup_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
-    _flight_state: ResMut<FlightState>,
+    mut flight_state: ResMut<FlightState>,
 ) {
     let mut orbit_rng: u64 = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -58,7 +58,7 @@ pub fn setup_scene(
             ));
 
             parent.spawn((
-                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel) | MOUSE (Steer Pitch/Yaw) | A/D (Orbit Yaw) | Z/C (Roll) | Q/E (Orbit Range) | SPACE (Warp Boost) | [O] Enter/Leave Orbit | ESC (Exit)"),
+                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel) | MOUSE (Steer Pitch/Yaw) | A/D (Orbit Yaw) | Z/C (Roll) | Q/E (Orbit Range) | SPACE (Warp Boost / Stop Autopilot) | [O] Enter/Leave Orbit | ESC (Exit)"),
                 TextFont {
                     font_size: 11.5.into(),
                     ..default()
@@ -68,7 +68,7 @@ pub fn setup_scene(
 
             parent.spawn((
                 AutoPilotHudText,
-                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [0-9/C/H/K/E/M] TO ENGAGE AUTOPILOT | PRESS [O] TO ENTER/LEAVE ORBIT"),
+                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [0-9/C/H/K/E/M] TO ENGAGE AUTOPILOT | PRESS [SPACE / O] TO STOP AUTOPILOT & RESTORE MANUAL CONTROLS"),
                 TextFont {
                     font_size: 13.0.into(),
                     ..default()
@@ -80,7 +80,7 @@ pub fn setup_scene(
             parent.spawn((
                 OrbitModeBanner,
                 OrbitModeInfoText,
-                Text::new("ORBIT MODE: IN ORBIT MODE | DESTINATION: EARTH | SPEED: 1.00x | CONTROLS: [W/S] Speed | [A/D] Yaw | [Z/C] Roll | [Q/E] Range | [O] Exit Orbit"),
+                Text::new("ORBIT MODE: IN ORBIT MODE | DESTINATION: EARTH | SPEED: 1.00x | CONTROLS: [W/S] Speed | [A/D] Yaw | [Z/C] Roll | [Q/E] Range | [SPACE / O] Exit Orbit & Restore Manual Controls"),
                 TextFont {
                     font_size: 12.0.into(),
                     ..default()
@@ -200,11 +200,20 @@ pub fn setup_scene(
     // ----------------------------------------------------
     // SHIP AVATAR & 3RD-PERSON CAMERA PERSPECTIVE
     // ----------------------------------------------------
-    // Calculate initial deep-space ship spawn position (~1.2 AU / 179.5M km from Sun) facing Sun at Vec3::ZERO
-    let initial_spawn_dist = 1.200000 * AU;
-    let initial_spawn_pos = Vec3::new(initial_spawn_dist * 0.7071, 150_000.0, initial_spawn_dist * 0.7071);
-    let dir_to_sun = (Vec3::ZERO - initial_spawn_pos).normalize_or_zero();
-    let initial_ship_rot = Quat::from_rotation_arc(Vec3::NEG_Z, dir_to_sun);
+    // Pre-calculate Earth position to align initial ship spawn direction towards Earth
+    let earth_orbit_radius = 1.000000 * AU; // 149,597,870.7 km
+    let earth_orbit_speed = 0.1500;
+    let earth_angle = next_orbit_angle();
+    let earth_pos = Vec3::new(earth_orbit_radius * earth_angle.cos(), 0.0, earth_orbit_radius * earth_angle.sin());
+
+    // Calculate initial deep-space ship spawn position (~2.2 AU / 329.1M km from Sun) facing Earth
+    let initial_spawn_dist = 2.200000 * AU;
+    let initial_spawn_pos = earth_pos.normalize() * initial_spawn_dist + Vec3::new(0.0, 150_000.0, 0.0);
+    let dir_to_earth = (earth_pos - initial_spawn_pos).normalize_or_zero();
+    let initial_ship_rot = Quat::from_rotation_arc(Vec3::NEG_Z, dir_to_earth);
+
+    flight_state.world_pos = initial_spawn_pos;
+    flight_state.previous_pos = initial_spawn_pos;
 
     let ship_entity = commands
         .spawn((
@@ -335,7 +344,7 @@ pub fn setup_scene(
         SunAnimation {
             frame_handles: sun_anim_handles,
             current_frame: 0,
-            frame_timer: Timer::from_seconds(0.80, TimerMode::Repeating),
+            frame_timer: Timer::from_seconds(0.10, TimerMode::Repeating),
             pulse_timer: 0.0,
         },
         Mesh3d(sun_mesh),
@@ -435,10 +444,6 @@ pub fn setup_scene(
     spawn_planet_area_light(&mut commands, venus_entity, venus_pos, 6051.8);
 
     // --- PLANET 3: EARTH (1.0000 AU) & THE MOON ---
-    let earth_orbit_radius = 1.000000 * AU; // 149,597,870.7 km
-    let earth_orbit_speed = 0.1500;
-    let earth_angle = next_orbit_angle();
-    let earth_pos = Vec3::new(earth_orbit_radius * earth_angle.cos(), 0.0, earth_orbit_radius * earth_angle.sin());
     let earth_tex: Handle<Image> = asset_server.load("textures/earth.jpg");
     let earth_mesh = meshes.add(create_uv_sphere(6371.0, 192, 96));
     let earth_mat = materials.add(StandardMaterial {
@@ -1489,6 +1494,45 @@ mod tests {
         for (p, uv) in positions.iter().zip(uvs.iter()) {
             println!("uv: {:?}, pos: [{:.2}, {:.2}, {:.2}]", uv, p[0], p[1], p[2]);
         }
+    }
+
+    #[test]
+    fn test_sun_anim_frame_00_validity() {
+        let frame_path = std::path::Path::new("assets/textures/sun_anim/frame_00.jpg");
+        assert!(frame_path.exists(), "frame_00.jpg should exist");
+        let metadata = std::fs::metadata(frame_path).expect("Read metadata");
+        assert!(
+            metadata.len() > 300_000,
+            "frame_00.jpg should be a full valid texture (>300KB), found {} bytes",
+            metadata.len()
+        );
+    }
+
+    #[test]
+    fn test_initial_ship_spawn_position_facing_earth() {
+        let earth_orbit_radius = 1.000000 * AU;
+        let earth_angle = 0.5 * std::f32::consts::TAU;
+        let earth_pos = Vec3::new(earth_orbit_radius * earth_angle.cos(), 0.0, earth_orbit_radius * earth_angle.sin());
+
+        let initial_spawn_dist = 2.200000 * AU;
+        let initial_spawn_pos = earth_pos.normalize() * initial_spawn_dist + Vec3::new(0.0, 150_000.0, 0.0);
+        let dir_to_earth = (earth_pos - initial_spawn_pos).normalize_or_zero();
+
+        let dist_to_sun = initial_spawn_pos.length();
+        assert!(
+            dist_to_sun > 2.0 * AU,
+            "Ship spawn position should be >2.0 AU from Sun, found {:.2} AU",
+            dist_to_sun / AU
+        );
+
+        let ship_rot = Quat::from_rotation_arc(Vec3::NEG_Z, dir_to_earth);
+        let ship_forward = ship_rot * Vec3::NEG_Z;
+        let dot_to_earth = ship_forward.dot(dir_to_earth);
+        assert!(
+            (dot_to_earth - 1.0).abs() < 1e-4,
+            "Ship forward vector should face Earth directly, dot product={}",
+            dot_to_earth
+        );
     }
 }
 

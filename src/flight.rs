@@ -22,6 +22,15 @@ pub fn compute_orbit_boundary(radius: f32) -> f32 {
     }
 }
 
+pub fn rotation_looking_to(dir: Vec3) -> Quat {
+    let dir = dir.normalize_or_zero();
+    if dir == Vec3::ZERO {
+        return Quat::IDENTITY;
+    }
+    let up = if dir.y.abs() > 0.95 { Vec3::Z } else { Vec3::Y };
+    Transform::IDENTITY.looking_to(dir, up).rotation
+}
+
 pub fn hide_cursor_system(
     mut cursor_query: Query<&mut bevy::window::CursorOptions, With<Window>>,
 ) {
@@ -88,7 +97,7 @@ pub fn pilot_freelook_system(
         if found {
             let to_target = (target_pos - flight_state.world_pos).normalize_or_zero();
             if to_target != Vec3::ZERO {
-                let destination_rot = Quat::from_rotation_arc(Vec3::NEG_Z, to_target);
+                let destination_rot = rotation_looking_to(to_target);
                 let rot_decay = 1.0 - (-12.0 * dt).exp();
                 ship_transform.rotation = ship_transform.rotation.slerp(destination_rot, rot_decay);
                 flight_state.angular_velocity = Vec3::ZERO;
@@ -200,9 +209,30 @@ pub fn ship_flight_system(
     // Record previous world position for swept line-segment collision detection
     flight_state.previous_pos = flight_state.world_pos;
 
-    // Space Key: Toggle FTL Boost Mode (first press) / Retro Deceleration (second press)
+    // Space Key: Cancel Auto-Pilot & Restore Manual Controls if active, else Toggle FTL Boost Mode
+    let is_autopilot_engaged = autopilot.active
+        || autopilot.arrived
+        || autopilot.engine_stopped
+        || autopilot.positioning_in_progress
+        || autopilot.leaving_orbit_in_progress;
+
     if keyboard.just_pressed(KeyCode::Space) {
-        if flight_state.boost_mode {
+        if is_autopilot_engaged {
+            // Cancel auto-pilot immediately and restore manual controls
+            autopilot.active = false;
+            autopilot.arrived = false;
+            autopilot.engine_stopped = false;
+            autopilot.positioning_in_progress = false;
+            autopilot.positioning_timer = 0.0;
+            autopilot.leaving_orbit_in_progress = false;
+            autopilot.leaving_orbit_timer = 0.0;
+            autopilot.current_waypoint = None;
+            autopilot.destination_index = None;
+            autopilot.prev_destination_pos = None;
+            flight_state.boost_mode = false;
+            flight_state.rapid_decel = false;
+            flight_state.angular_velocity = Vec3::ZERO;
+        } else if flight_state.boost_mode {
             // Pressing Space again while in boost mode decelerates quickly towards standard speed/stop
             flight_state.boost_mode = false;
             flight_state.rapid_decel = true;
@@ -210,11 +240,6 @@ pub fn ship_flight_system(
             // First press of Space enters FTL boost mode
             flight_state.boost_mode = true;
             flight_state.rapid_decel = false;
-            if autopilot.active || autopilot.arrived || autopilot.engine_stopped {
-                autopilot.active = false;
-                autopilot.arrived = false;
-                autopilot.engine_stopped = false;
-            }
         }
     }
 
@@ -532,13 +557,16 @@ pub fn stop_engine_input_system(
     let triggered = keyboard.just_pressed(KeyCode::KeyO);
 
     if triggered {
-        if autopilot.engine_stopped || autopilot.arrived {
-            // Initiate graceful exit from orbit mode with transition positioning delay
+        if autopilot.engine_stopped || autopilot.arrived || autopilot.active || autopilot.positioning_in_progress {
+            // Initiate graceful exit from orbit mode / cancel autopilot
             autopilot.leaving_orbit_in_progress = true;
             autopilot.leaving_orbit_timer = 1.2;
             autopilot.arrived = false;
             autopilot.engine_stopped = false;
             autopilot.active = false;
+            autopilot.positioning_in_progress = false;
+            autopilot.positioning_timer = 0.0;
+            autopilot.current_waypoint = None;
         } else {
             // Determine target destination body position and radius
             let mut dest_pos = Vec3::ZERO;
@@ -738,7 +766,7 @@ pub fn autopilot_flight_system(
         autopilot.positioning_timer -= dt;
         let look_dir = (destination_pos - flight_state.world_pos).normalize_or_zero();
         if look_dir != Vec3::ZERO {
-            let target_rot = Quat::from_rotation_arc(Vec3::NEG_Z, look_dir);
+            let target_rot = rotation_looking_to(look_dir);
             let rot_decay = 1.0 - (-6.0 * dt).exp();
             ship_transform.rotation = ship_transform.rotation.slerp(target_rot, rot_decay);
         }
@@ -828,18 +856,20 @@ pub fn autopilot_flight_system(
 
         let mut new_dir = safe_dir;
 
+        let up_axis = if new_dir.y.abs() > 0.95 { Vec3::Z } else { Vec3::Y };
+
         // Base automatic orbital revolution rate + manual Key A/D and mouse input
         let auto_orbit_rate = 1.0;
         let horiz_rot_angle = (-mouse_delta.x * mouse_sens) + ((auto_orbit_rate + horiz_key_input) * orbit_speed * dt);
         if horiz_rot_angle != 0.0 {
-            let rot_quat = Quat::from_rotation_y(horiz_rot_angle);
+            let rot_quat = Quat::from_axis_angle(up_axis, horiz_rot_angle);
             new_dir = rot_quat * new_dir;
         }
 
         // Vert (pitch) rot angle uses mouse Y delta (Un-inverted!)
         let vert_rot_angle = mouse_delta.y * mouse_sens;
         if vert_rot_angle != 0.0 {
-            let mut right_axis = Vec3::Y.cross(new_dir).normalize_or_zero();
+            let mut right_axis = up_axis.cross(new_dir).normalize_or_zero();
             if right_axis == Vec3::ZERO {
                 right_axis = Vec3::X;
             }
@@ -872,10 +902,12 @@ pub fn autopilot_flight_system(
         if is_input_active {
             let mut orbit_tangent = Vec3::ZERO;
             if horiz_rot_angle != 0.0 {
-                orbit_tangent += Vec3::Y.cross(new_dir).normalize_or_zero() * horiz_rot_angle.signum();
+                let right_axis = up_axis.cross(new_dir).normalize_or_zero();
+                let right = if right_axis == Vec3::ZERO { Vec3::X } else { right_axis };
+                orbit_tangent += right.cross(new_dir).normalize_or_zero() * horiz_rot_angle.signum();
             }
             if vert_rot_angle != 0.0 {
-                let right_axis = Vec3::Y.cross(new_dir).normalize_or_zero();
+                let right_axis = up_axis.cross(new_dir).normalize_or_zero();
                 let right = if right_axis == Vec3::ZERO { Vec3::X } else { right_axis };
                 orbit_tangent += right.cross(new_dir).normalize_or_zero() * vert_rot_angle.signum();
             }
@@ -892,7 +924,7 @@ pub fn autopilot_flight_system(
         // Turn ship to face towards the target body while orbiting and apply Z/C roll
         let look_dir = (destination_pos - flight_state.world_pos).normalize_or_zero();
         if look_dir != Vec3::ZERO {
-            let base_rot = Quat::from_rotation_arc(Vec3::NEG_Z, look_dir);
+            let base_rot = rotation_looking_to(look_dir);
             let roll_rot = Quat::from_rotation_z(flight_state.orbit_roll);
             let target_rot = base_rot * roll_rot;
             let rot_decay = 1.0 - (-5.0 * dt).exp();
@@ -1389,7 +1421,7 @@ mod tests {
 
         let ship_transform = app.world().entity(ship_entity).get::<Transform>().unwrap();
         let expected_dir = (destination_pos - Vec3::new(10000.0, 0.0, 0.0)).normalize();
-        let expected_rot = Quat::from_rotation_arc(Vec3::NEG_Z, expected_dir);
+        let expected_rot = rotation_looking_to(expected_dir);
         let angle_diff = ship_transform.rotation.angle_between(expected_rot);
 
         assert!(
@@ -1447,5 +1479,66 @@ mod tests {
             updated_autopilot.current_waypoint.is_some(),
             "Dynamic path-finding should generate a detour waypoint when an obstacle planet blocks the transit trajectory"
         );
+    }
+
+    #[test]
+    fn test_space_key_stops_autopilot_and_restores_manual_controls() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<FlightState>();
+
+        let mut autopilot = AutoPilotState::default();
+        autopilot.active = true;
+        autopilot.arrived = true;
+        autopilot.engine_stopped = true;
+        autopilot.destination_index = Some(3);
+        autopilot.destination_name = "Earth";
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn((Ship, Transform::IDENTITY));
+
+        // Press Space Key while autopilot / orbit is engaged
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        keyboard.press(KeyCode::Space);
+        app.insert_resource(keyboard);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(ship_flight_system);
+        schedule.run(app.world_mut());
+
+        let updated_autopilot = app.world().resource::<AutoPilotState>();
+        let updated_flight_state = app.world().resource::<FlightState>();
+
+        assert!(
+            !updated_autopilot.active,
+            "Autopilot active should be false after pressing Space"
+        );
+        assert!(
+            !updated_autopilot.arrived,
+            "Autopilot arrived should be false after pressing Space"
+        );
+        assert!(
+            !updated_autopilot.engine_stopped,
+            "Autopilot engine_stopped should be false after pressing Space"
+        );
+        assert!(
+            !updated_flight_state.boost_mode,
+            "Pressing Space to cancel autopilot should restore manual flight controls, not engage boost mode"
+        );
+    }
+
+    #[test]
+    fn test_rotation_looking_to_stability() {
+        let dir1 = Vec3::new(0.0, 0.0, -1.0);
+        let q1 = rotation_looking_to(dir1);
+        let f1 = q1 * Vec3::NEG_Z;
+        assert!((f1 - dir1).length() < 1e-4);
+
+        let dir2 = Vec3::new(0.0, 1.0, 0.0);
+        let q2 = rotation_looking_to(dir2);
+        let f2 = q2 * Vec3::NEG_Z;
+        assert!((f2 - dir2).length() < 1e-4);
     }
 }

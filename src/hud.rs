@@ -148,7 +148,7 @@ pub fn update_hud_system(
             let mode_hint = if flight_state.boost_mode {
                 "BOOST MODE | PRESS SPACE AGAIN TO BRAKE QUICKLY"
             } else {
-                "W/S: ACCEL/DECEL | MOUSE/ARROWS: STEER | Z/C: ROLL | SPACE: WARP BOOST | [0-9/C/H/K/E/M]: AUTOPILOT | [O]: ORBIT"
+                "W/S: ACCEL/DECEL | MOUSE/ARROWS: STEER | Z/C: ROLL | SPACE: WARP BOOST | [0-9/C/H/K/E/M]: AUTOPILOT | [SPACE / O]: STOP AUTOPILOT"
             };
             **text = format!(
                 "FLIGHT STATUS: MANUAL CONTROL | SPEED: {} | {}",
@@ -170,7 +170,7 @@ pub fn update_hud_system(
             node.display = Display::Flex;
             *vis = Visibility::Inherited;
             **text = format!(
-                "ORBIT MODE: ENGAGED | DESTINATION: {} | SPEED: {:.2}x | STATUS: {} | CONTROLS: [W/S] Speed | [A/D] Orbit Yaw | [Z/C] Ship Roll | [Q/E] Range | [O] Exit Orbit",
+                "ORBIT MODE: ENGAGED | DESTINATION: {} | SPEED: {:.2}x | STATUS: {} | CONTROLS: [W/S] Speed | [A/D] Orbit Yaw | [Z/C] Ship Roll | [Q/E] Range | [SPACE / O] Exit Orbit & Restore Manual Controls",
                 destination_name, speed_mult, phase
             );
         } else if autopilot.leaving_orbit_in_progress {

@@ -334,18 +334,15 @@ pub fn animate_sun_surface_system(
         anim.frame_timer.tick(delta);
         anim.pulse_timer += delta_secs;
 
-        if anim.frame_timer.just_finished() && !anim.frame_handles.is_empty() {
-            anim.current_frame = (anim.current_frame + 1) % anim.frame_handles.len();
-            let next_tex = anim.frame_handles[anim.current_frame].clone();
-
-            if let Some(mut mat) = materials.get_mut(mat_handle) {
+        if let Some(mut mat) = materials.get_mut(mat_handle) {
+            if anim.frame_timer.just_finished() && !anim.frame_handles.is_empty() {
+                anim.current_frame = (anim.current_frame + 1) % anim.frame_handles.len();
+                let next_tex = anim.frame_handles[anim.current_frame].clone();
                 mat.base_color_texture = Some(next_tex.clone());
                 mat.emissive_texture = Some(next_tex);
             }
-        }
 
-        // Gentle solar flare emissive pulsation
-        if let Some(mut mat) = materials.get_mut(mat_handle) {
+            // Gentle solar flare emissive pulsation
             let pulse = (anim.pulse_timer * 1.2).sin() * 2.2;
             mat.emissive = LinearRgba::new(35.0 + pulse, 25.0 + pulse * 0.7, 6.0, 1.0);
         }
