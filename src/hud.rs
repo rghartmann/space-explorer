@@ -52,8 +52,13 @@ pub fn format_dual_space_distance_compact(dist_km: f32) -> String {
 pub fn exit_on_esc(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut app_exit: MessageWriter<AppExit>,
+    mut cursor_query: Query<&mut bevy::window::CursorOptions, With<Window>>,
 ) {
     if keyboard.just_pressed(KeyCode::Escape) {
+        for mut cursor in &mut cursor_query {
+            cursor.visible = true;
+            cursor.grab_mode = bevy::window::CursorGrabMode::None;
+        }
         app_exit.write(AppExit::Success);
     }
 }
