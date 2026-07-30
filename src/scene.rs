@@ -2,6 +2,7 @@ use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::post_process::bloom::{Bloom, BloomPrefilter};
 use bevy::prelude::*;
+use bevy::camera::visibility::NoFrustumCulling;
 
 use crate::audio::{ensure_ambient_piano_file, ensure_engine_hum_file};
 use crate::components::*;
@@ -332,9 +333,10 @@ pub fn setup_scene(
 
     let sun_mesh = meshes.add(create_uv_sphere(696340.0, 192, 96));
     let sun_mat = materials.add(StandardMaterial {
+        base_color: Color::linear_rgb(8.0, 6.5, 3.0),
         base_color_texture: Some(sun_tex.clone()),
         emissive_texture: Some(sun_tex),
-        emissive: LinearRgba::new(35.0, 25.0, 6.0, 1.0),
+        emissive: LinearRgba::new(45.0, 32.0, 10.0, 1.0),
         unlit: true,
         ..default()
     });
@@ -349,6 +351,7 @@ pub fn setup_scene(
         },
         Mesh3d(sun_mesh),
         MeshMaterial3d(sun_mat),
+        NoFrustumCulling,
         Transform::from_xyz(0.0, 0.0, 0.0),
     )).id();
 
@@ -365,6 +368,7 @@ pub fn setup_scene(
     let corona_entity = commands.spawn((
         Mesh3d(corona_mesh),
         MeshMaterial3d(corona_mat),
+        NoFrustumCulling,
         Transform::IDENTITY,
     )).id();
     commands.entity(sun_entity).add_child(corona_entity);
@@ -1091,7 +1095,7 @@ pub fn setup_scene(
     // 5. DEEP SPACE SKYBOX SPHERE (SpaceSpheremaps Spheremap) & STARFIELD
     // ----------------------------------------------------
     let skybox_tex: Handle<Image> = asset_server.load("textures/space_skybox.png");
-    let skybox_mesh = meshes.add(create_uv_sphere(95_000.0, 128, 64));
+    let skybox_mesh = meshes.add(create_uv_sphere(900_000.0, 128, 64));
 
     let skybox_mat = materials.add(StandardMaterial {
         base_color_texture: Some(skybox_tex),
@@ -1105,6 +1109,7 @@ pub fn setup_scene(
         SkyboxSphere,
         Mesh3d(skybox_mesh),
         MeshMaterial3d(skybox_mat),
+        NoFrustumCulling,
         Transform::from_scale(Vec3::new(-1.0, 1.0, 1.0)),
     ));
 

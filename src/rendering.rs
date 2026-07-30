@@ -92,7 +92,7 @@ pub fn logarithmic_distance_render_system(
 
     // Render Sun
     for (sun, mut transform, mut vis) in &mut sun_query {
-        let (pos, scale, v) = compute_logarithmic_transform(Vec3::ZERO, cam_pos, sun.radius, 0.025);
+        let (pos, scale, v) = compute_logarithmic_transform(Vec3::ZERO, cam_pos, sun.radius, 0.035);
         transform.translation = pos;
         transform.scale = scale;
         *vis = v;
@@ -148,7 +148,7 @@ pub fn logarithmic_distance_render_system(
     // Render Starfield (Fixed 2D Billboard Point Skybox around camera)
     for (star, mut transform, mut vis) in &mut star_query {
         *vis = Visibility::Inherited;
-        let d_vis = 85_000.0;
+        let d_vis = 800_000.0;
 
         let star_render_pos = star.direction * d_vis;
         transform.translation = star_render_pos;
