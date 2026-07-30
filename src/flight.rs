@@ -77,8 +77,10 @@ pub fn pilot_freelook_system(
     sun_query: Query<&Sun>,
 ) {
     let mut mouse_delta = Vec2::ZERO;
-    for event in mouse_events.read() {
-        mouse_delta += event.delta;
+    if !autopilot.arrived && !autopilot.engine_stopped {
+        for event in mouse_events.read() {
+            mouse_delta += event.delta;
+        }
     }
 
     let dt = time.delta_secs();
@@ -86,7 +88,7 @@ pub fn pilot_freelook_system(
     let Ok(mut ship_transform) = ship_query.single_mut() else { return; };
 
     // When auto-pilot destination is active and in-transit, autopilot keeps target directly centered on camera
-    if autopilot.active && !autopilot.arrived {
+    if autopilot.active && !autopilot.arrived && !autopilot.positioning_in_progress {
         let mut target_pos = Vec3::ZERO;
         let mut found = false;
 
@@ -268,62 +270,64 @@ pub fn ship_flight_system(
         }
     }
 
-    // KeyX / Backspace: Emergency Full Retro-Stop (bring ship to 0 km/s)
-    if keyboard.just_pressed(KeyCode::KeyX) || keyboard.just_pressed(KeyCode::Backspace) {
-        flight_state.boost_mode = false;
-        flight_state.rapid_decel = false;
-        flight_state.velocity = Vec3::ZERO;
-    }
-
-    if flight_state.boost_mode {
-        // Smooth FTL acceleration towards FTL warp speed cap (50.0c)
-        let target_speed = MAX_SPEED_CAP;
-        let accel_rate = 1.0 - (-5.0 * dt).exp();
-        let forward = ship_transform.forward().as_vec3();
-        let current_speed = flight_state.velocity.length();
-        let new_speed = current_speed.lerp(target_speed, accel_rate).max(100_000.0);
-        flight_state.velocity = forward * new_speed;
-    } else if flight_state.rapid_decel {
-        // Retro-Thruster Rapid Braking towards 0
-        let decel_rate = 1.0 - (-8.0 * dt).exp();
-        let current_speed = flight_state.velocity.length();
-        let new_speed = current_speed.lerp(0.0, decel_rate);
-        if new_speed <= 20.0 {
+    if !is_autopilot_engaged {
+        // KeyX / Backspace: Emergency Full Retro-Stop (bring ship to 0 km/s)
+        if keyboard.just_pressed(KeyCode::KeyX) || keyboard.just_pressed(KeyCode::Backspace) {
+            flight_state.boost_mode = false;
             flight_state.rapid_decel = false;
             flight_state.velocity = Vec3::ZERO;
-        } else {
-            let dir = flight_state.velocity.normalize_or_zero();
-            flight_state.velocity = dir * new_speed;
-        }
-    } else if !autopilot.active && !autopilot.arrived && !autopilot.engine_stopped {
-        // Manual Impulse Propulsion controls in Vacuum (Newtonian Mechanics: ZERO drag!)
-        let accel_power = 120_000.0 * dt; // Responsive thruster acceleration (120,000 km/s^2)
-        let forward = ship_transform.forward().as_vec3();
-
-        // W Key: Forward Main Thrusters (add velocity in ship forward direction)
-        if keyboard.pressed(KeyCode::KeyW) {
-            flight_state.velocity += forward * accel_power;
         }
 
-        // S Key: Reverse Retro-Thrusters (decelerate velocity towards 0, or apply reverse thrust)
-        if keyboard.pressed(KeyCode::KeyS) {
+        if flight_state.boost_mode {
+            // Smooth FTL acceleration towards FTL warp speed cap (50.0c)
+            let target_speed = MAX_SPEED_CAP;
+            let accel_rate = 1.0 - (-5.0 * dt).exp();
+            let forward = ship_transform.forward().as_vec3();
             let current_speed = flight_state.velocity.length();
-            if current_speed > 10.0 {
-                let decel_amount = accel_power * 1.25;
-                let new_speed = (current_speed - decel_amount).max(0.0);
-                let vel_dir = flight_state.velocity / current_speed;
-                flight_state.velocity = vel_dir * new_speed;
+            let new_speed = current_speed.lerp(target_speed, accel_rate).max(100_000.0);
+            flight_state.velocity = forward * new_speed;
+        } else if flight_state.rapid_decel {
+            // Retro-Thruster Rapid Braking towards 0
+            let decel_rate = 1.0 - (-8.0 * dt).exp();
+            let current_speed = flight_state.velocity.length();
+            let new_speed = current_speed.lerp(0.0, decel_rate);
+            if new_speed <= 20.0 {
+                flight_state.rapid_decel = false;
+                flight_state.velocity = Vec3::ZERO;
             } else {
-                flight_state.velocity -= forward * (accel_power * 0.5);
+                let dir = flight_state.velocity.normalize_or_zero();
+                flight_state.velocity = dir * new_speed;
             }
-        }
+        } else {
+            // Manual Impulse Propulsion controls in Vacuum (Newtonian Mechanics: ZERO drag!)
+            let accel_power = 120_000.0 * dt; // Responsive thruster acceleration (120,000 km/s^2)
+            let forward = ship_transform.forward().as_vec3();
 
-        // Vacuum Inertia (Newton's First Law): Releasing controls maintains 100% constant speed!
-        // No artificial drag/damping is applied.
+            // W Key: Forward Main Thrusters (add velocity in ship forward direction)
+            if keyboard.pressed(KeyCode::KeyW) {
+                flight_state.velocity += forward * accel_power;
+            }
 
-        // Sub-light impulse speed cap (600,000 km/s / ~2.0c)
-        if flight_state.velocity.length() > STANDARD_MAX_SPEED {
-            flight_state.velocity = flight_state.velocity.normalize() * STANDARD_MAX_SPEED;
+            // S Key: Reverse Retro-Thrusters (decelerate velocity towards 0, or apply reverse thrust)
+            if keyboard.pressed(KeyCode::KeyS) {
+                let current_speed = flight_state.velocity.length();
+                if current_speed > 10.0 {
+                    let decel_amount = accel_power * 1.25;
+                    let new_speed = (current_speed - decel_amount).max(0.0);
+                    let vel_dir = flight_state.velocity / current_speed;
+                    flight_state.velocity = vel_dir * new_speed;
+                } else {
+                    flight_state.velocity -= forward * (accel_power * 0.5);
+                }
+            }
+
+            // Vacuum Inertia (Newton's First Law): Releasing controls maintains 100% constant speed!
+            // No artificial drag/damping is applied.
+
+            // Sub-light impulse speed cap (600,000 km/s / ~2.0c)
+            if flight_state.velocity.length() > STANDARD_MAX_SPEED {
+                flight_state.velocity = flight_state.velocity.normalize() * STANDARD_MAX_SPEED;
+            }
         }
     }
 
@@ -791,6 +795,12 @@ pub fn autopilot_flight_system(
     // Handle positioning transition delay when entering orbit
     if autopilot.positioning_in_progress {
         autopilot.positioning_timer -= dt;
+
+        // Immediately arrest velocity and clear boost/decel states during orbit insertion positioning
+        flight_state.velocity = Vec3::ZERO;
+        flight_state.boost_mode = false;
+        flight_state.rapid_decel = false;
+
         let look_dir = (destination_pos - flight_state.world_pos).normalize_or_zero();
         if look_dir != Vec3::ZERO {
             let current_forward = ship_transform.forward().as_vec3();
@@ -799,19 +809,12 @@ pub fn autopilot_flight_system(
             let rot_decay = 1.0 - (-6.0 * dt).exp();
             ship_transform.rotation = ship_transform.rotation.slerp(target_rot, rot_decay);
         }
-        let vel_decay = 1.0 - (-7.0 * dt).exp();
-        flight_state.velocity = flight_state.velocity.lerp(Vec3::ZERO, vel_decay);
-        let current_vel = flight_state.velocity;
-        flight_state.world_pos += current_vel * dt;
-        ship_transform.translation = Vec3::ZERO;
 
-        // Keep ship safely outside arrival boundary during orbit insertion positioning
+        // Pin ship steadily at arrival_dist facing destination body
         let offset = flight_state.world_pos - destination_pos;
-        let dist_from_center = offset.length();
-        if dist_from_center < arrival_dist {
-            let safe_dir = if dist_from_center > 0.001 { offset / dist_from_center } else { Vec3::Z };
-            flight_state.world_pos = destination_pos + safe_dir * arrival_dist;
-        }
+        let safe_dir = if offset.length() > 0.001 { offset.normalize() } else { Vec3::Z };
+        flight_state.world_pos = destination_pos + safe_dir * arrival_dist;
+        ship_transform.translation = Vec3::ZERO;
 
         if autopilot.positioning_timer <= 0.0 {
             autopilot.positioning_in_progress = false;
@@ -822,10 +825,32 @@ pub fn autopilot_flight_system(
         return;
     }
 
-    if real_distance_to_dest <= arrival_dist && !autopilot.arrived && !autopilot.engine_stopped {
+    let swept_hits_boundary = if dt > 0.0001 && flight_state.velocity != Vec3::ZERO {
+        let current_pos = flight_state.world_pos;
+        let move_vec = flight_state.velocity * dt;
+        let seg_len_sq = move_vec.length_squared();
+        if seg_len_sq > 0.001 {
+            let t = ((destination_pos - current_pos).dot(move_vec) / seg_len_sq).clamp(0.0, 1.0);
+            let closest_pt = current_pos + move_vec * t;
+            closest_pt.distance(destination_pos) <= arrival_dist
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if (real_distance_to_dest <= arrival_dist || swept_hits_boundary) && !autopilot.arrived && !autopilot.engine_stopped {
+        let offset = flight_state.world_pos - destination_pos;
+        let safe_dir = if offset.length() > 0.001 { offset.normalize() } else { Vec3::Z };
+        flight_state.world_pos = destination_pos + safe_dir * arrival_dist;
+        flight_state.velocity = Vec3::ZERO;
+        flight_state.boost_mode = false;
+        flight_state.rapid_decel = false;
         autopilot.positioning_in_progress = true;
         autopilot.positioning_timer = 1.5;
         autopilot.entering_orbit_timer = 2.5;
+        autopilot.current_waypoint = None;
         return;
     }
 
@@ -953,32 +978,37 @@ pub fn autopilot_flight_system(
     let min_cruise_speed = 12_000.0;
     let decel_start_dist = (arrival_dist * 4.5).clamp(15_000.0, 15_000_000.0);
 
-    // Auto-engage warp mode when planet destination is far away
-    if distance > decel_start_dist + 5_000.0 && distance > 60_000.0 {
+    // Auto-engage warp mode when planet destination is far away and outside decel zone
+    if distance > decel_start_dist + 10_000.0 && distance > 80_000.0 {
         flight_state.boost_mode = true;
+        flight_state.rapid_decel = false;
     } else if distance <= decel_start_dist {
-        if flight_state.boost_mode {
-            flight_state.boost_mode = false;
-            flight_state.rapid_decel = true;
-        }
+        flight_state.boost_mode = false;
+        flight_state.rapid_decel = false;
     }
 
     let max_cruise_speed = if flight_state.boost_mode {
-        MAX_SPEED_CAP * (distance / 400_000.0).clamp(1.0, 50.0)
+        MAX_SPEED_CAP * (distance / 400_000.0).clamp(0.05, 50.0)
     } else {
         (distance * 0.45).clamp(min_cruise_speed, MAX_SPEED_CAP)
     };
 
+    let min_approach_speed = 5_000.0;
     let target_speed = if distance > decel_start_dist {
         max_cruise_speed
     } else {
         let progress = ((distance - arrival_dist) / (decel_start_dist - arrival_dist)).clamp(0.0, 1.0);
-        let approach_curve = progress.powf(1.35); // Smooth non-linear braking curve down to 0 at orbit boundary
-        max_cruise_speed * approach_curve
+        let approach_curve = progress.powf(1.35); // Smooth non-linear braking curve down to min_approach_speed at orbit boundary
+        (max_cruise_speed * approach_curve).max(min_approach_speed)
     };
 
-    let vel_decay = 1.0 - (-6.0 * dt).exp(); // Smooth, responsive velocity transition towards target
+    let vel_decay = 1.0 - (-8.0 * dt).exp(); // Smooth, responsive velocity transition towards target
     flight_state.velocity = flight_state.velocity.lerp(target_dir * target_speed, vel_decay);
+
+    // Hard speed cap during deceleration phase: velocity cannot exceed target_speed when decelerating
+    if distance <= decel_start_dist && flight_state.velocity.length() > target_speed {
+        flight_state.velocity = flight_state.velocity.normalize() * target_speed;
+    }
 
     // Safety boundary: prevent autopilot trajectory from penetrating below arrival boundary
     let offset = flight_state.world_pos - destination_pos;
@@ -1008,8 +1038,11 @@ pub fn celestial_collision_system(
     let new_pos = flight_state.world_pos;
     let segment_vec = new_pos - old_pos;
     let segment_len_sq = segment_vec.length_squared();
+    let is_ap_active = autopilot.active;
+    let dest_idx = autopilot.destination_index;
+    let dest_name = autopilot.destination_name;
 
-    let mut check_collision = |body_pos: Vec3, body_radius: f32| -> bool {
+    let mut check_collision = |body_pos: Vec3, body_radius: f32, is_target_destination: bool| -> bool {
         let collision_radius = body_radius + 3.0;
         let t = if segment_len_sq > 0.0001 {
             ((body_pos - old_pos).dot(segment_vec) / segment_len_sq).clamp(0.0, 1.0)
@@ -1028,7 +1061,10 @@ pub fn celestial_collision_system(
                 push_dir = Vec3::Y;
             }
 
-            flight_state.world_pos = body_pos + push_dir * collision_radius;
+            let arrival_dist = compute_orbit_boundary(body_radius);
+            let safe_push_radius = if is_target_destination { arrival_dist } else { collision_radius };
+
+            flight_state.world_pos = body_pos + push_dir * safe_push_radius;
             ship_transform.translation = Vec3::ZERO;
 
             let radial_vel = flight_state.velocity.dot(push_dir);
@@ -1037,9 +1073,21 @@ pub fn celestial_collision_system(
             }
 
             if autopilot.active {
-                autopilot.active = false;
-                autopilot.arrived = false;
-                autopilot.prev_destination_pos = None;
+                if is_target_destination {
+                    // Safe entry into target destination orbit (only start positioning if not already in progress or arrived)
+                    flight_state.velocity = Vec3::ZERO;
+                    if !autopilot.positioning_in_progress && !autopilot.arrived {
+                        autopilot.positioning_in_progress = true;
+                        autopilot.positioning_timer = 1.5;
+                        autopilot.entering_orbit_timer = 2.5;
+                        autopilot.current_waypoint = None;
+                    }
+                } else {
+                    // Collision with an obstacle body aborts autopilot
+                    autopilot.active = false;
+                    autopilot.arrived = false;
+                    autopilot.prev_destination_pos = None;
+                }
             }
             return true;
         }
@@ -1047,25 +1095,28 @@ pub fn celestial_collision_system(
     };
 
     for sun in &sun_query {
-        if check_collision(Vec3::ZERO, sun.radius) {
+        let is_target = is_ap_active && dest_idx == Some(0);
+        if check_collision(Vec3::ZERO, sun.radius, is_target) {
             return;
         }
     }
 
     for planet in &planet_query {
-        if check_collision(planet.world_pos, planet.radius) {
+        let is_target = is_ap_active && dest_idx == Some(planet.index);
+        if check_collision(planet.world_pos, planet.radius, is_target) {
             return;
         }
     }
 
     for moon in &moon_query {
-        if check_collision(moon.world_pos, moon.radius) {
+        let is_target = is_ap_active && dest_idx == Some(100) && moon.name == dest_name;
+        if check_collision(moon.world_pos, moon.radius, is_target) {
             return;
         }
     }
 
     for asteroid in &asteroid_query {
-        if check_collision(asteroid.world_pos, asteroid.radius) {
+        if check_collision(asteroid.world_pos, asteroid.radius, false) {
             return;
         }
     }
@@ -1590,5 +1641,321 @@ mod tests {
         let q_down = rotation_looking_to(down_dir);
         let f_down = q_down * Vec3::NEG_Z;
         assert!((f_down - down_dir).length() < 1e-4);
+    }
+
+    #[test]
+    fn test_earth_autopilot_warp_deceleration_and_orbit_entry() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+
+        let earth_radius = 6371.0;
+        let earth_pos = Vec3::new(149_597_870.7, 0.0, 0.0);
+        let start_pos = earth_pos + Vec3::new(500_000.0, 0.0, 0.0);
+
+        let mut flight_state = FlightState::default();
+        flight_state.world_pos = start_pos;
+        flight_state.boost_mode = true;
+        app.insert_resource(flight_state);
+
+        let mut autopilot = AutoPilotState::default();
+        autopilot.active = true;
+        autopilot.destination_index = Some(3);
+        autopilot.destination_name = "Earth";
+        autopilot.arrived = false;
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn(Planet {
+            index: 3,
+            name: "Earth",
+            radius: earth_radius,
+            orbit_radius: 149_597_870.7,
+            orbit_speed: 0.15,
+            rotation_speed: 0.01,
+            orbit_angle: 0.0,
+            world_pos: earth_pos,
+        });
+
+        app.world_mut().spawn((Ship, Transform::default()));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems((autopilot_flight_system, ship_flight_system).chain());
+
+        // Advance simulation for 20 seconds (1200 frames @ 60 FPS)
+        for _ in 0..1200 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
+            schedule.run(app.world_mut());
+
+            let current_fs = app.world().resource::<FlightState>();
+            let dist = current_fs.world_pos.distance(earth_pos);
+            let boundary = compute_orbit_boundary(earth_radius);
+
+            // Ensure ship never penetrates inside Earth surface
+            assert!(
+                dist >= earth_radius,
+                "Ship position ({dist}) penetrated below Earth surface radius ({earth_radius})"
+            );
+
+            // Break loop once orbit insertion or orbit lock is achieved
+            let current_ap = app.world().resource::<AutoPilotState>();
+            if current_ap.positioning_in_progress || current_ap.arrived || current_ap.engine_stopped {
+                assert!(
+                    (dist - boundary).abs() < 5000.0,
+                    "Entered orbit within reasonable proximity of boundary (dist={dist}, boundary={boundary})"
+                );
+                break;
+            }
+        }
+
+        let final_ap = app.world().resource::<AutoPilotState>();
+        assert!(
+            final_ap.positioning_in_progress || final_ap.arrived || final_ap.engine_stopped,
+            "Autopilot to Earth should smoothly transition to orbit mode"
+        );
+    }
+
+    #[test]
+    fn test_all_planets_autopilot_orbit_entry_consistency() {
+        let test_bodies = [
+            (1, "Mercury", 2439.7, 57_909_050.0),
+            (2, "Venus", 6051.8, 108_208_000.0),
+            (3, "Earth", 6371.0, 149_597_870.7),
+            (4, "Mars", 3389.5, 227_939_200.0),
+            (5, "Jupiter", 69911.0, 778_570_000.0),
+            (6, "Saturn", 58232.0, 1_433_530_000.0),
+        ];
+
+        for (idx, name, radius, orbit_r) in test_bodies {
+            let mut app = App::new();
+            app.add_plugins(bevy::input::InputPlugin);
+            app.init_resource::<Time>();
+            app.init_resource::<ButtonInput<KeyCode>>();
+
+            let body_pos = Vec3::new(orbit_r, 0.0, 0.0);
+            let boundary = compute_orbit_boundary(radius);
+            let decel_start_dist = (boundary * 4.5).clamp(15_000.0, 15_000_000.0);
+            let start_dist = decel_start_dist + 200_000.0;
+            let start_pos = body_pos + Vec3::new(start_dist, 0.0, 0.0);
+
+            let mut flight_state = FlightState::default();
+            flight_state.world_pos = start_pos;
+            flight_state.boost_mode = true;
+            app.insert_resource(flight_state);
+
+            let mut autopilot = AutoPilotState::default();
+            autopilot.active = true;
+            autopilot.destination_index = Some(idx);
+            autopilot.destination_name = name;
+            autopilot.arrived = false;
+            app.insert_resource(autopilot);
+
+            app.world_mut().spawn(Planet {
+                index: idx,
+                name,
+                radius,
+                orbit_radius: orbit_r,
+                orbit_speed: 0.1,
+                rotation_speed: 0.01,
+                orbit_angle: 0.0,
+                world_pos: body_pos,
+            });
+
+            app.world_mut().spawn((Ship, Transform::default()));
+
+            let mut schedule = Schedule::default();
+            schedule.add_systems((autopilot_flight_system, ship_flight_system).chain());
+
+            let mut reached_orbit = false;
+            for _ in 0..3000 {
+                app.world_mut()
+                    .resource_mut::<Time>()
+                    .advance_by(std::time::Duration::from_millis(16));
+                schedule.run(app.world_mut());
+
+                let current_ap = app.world().resource::<AutoPilotState>();
+                if current_ap.positioning_in_progress || current_ap.arrived || current_ap.engine_stopped {
+                    reached_orbit = true;
+                    break;
+                }
+            }
+
+            assert!(
+                reached_orbit,
+                "Autopilot to celestial body {name} (index {idx}) should smoothly enter orbit mode"
+            );
+        }
+    }
+
+    #[test]
+    fn test_collision_detection_target_destination_orbit_entry() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+
+        let planet_pos = Vec3::new(1000.0, 0.0, 0.0);
+        let planet_radius = 500.0;
+
+        let mut flight_state = FlightState::default();
+        flight_state.previous_pos = planet_pos + Vec3::new(505.0, 0.0, 0.0);
+        flight_state.world_pos = planet_pos + Vec3::new(501.0, 0.0, 0.0);
+        app.insert_resource(flight_state);
+
+        let mut autopilot = AutoPilotState::default();
+        autopilot.active = true;
+        autopilot.destination_index = Some(1);
+        autopilot.destination_name = "TargetPlanet";
+        autopilot.arrived = false;
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn(Planet {
+            index: 1,
+            name: "TargetPlanet",
+            radius: planet_radius,
+            orbit_radius: 1000.0,
+            orbit_speed: 0.0,
+            rotation_speed: 0.0,
+            orbit_angle: 0.0,
+            world_pos: planet_pos,
+        });
+
+        app.world_mut().spawn((Ship, Transform::default()));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(celestial_collision_system);
+        schedule.run(app.world_mut());
+
+        let final_ap = app.world().resource::<AutoPilotState>();
+        let final_fs = app.world().resource::<FlightState>();
+
+        assert!(
+            final_ap.active,
+            "Collision detection with target destination body must NOT set autopilot.active to false"
+        );
+        assert!(
+            final_ap.positioning_in_progress,
+            "Collision detection with target destination body should trigger orbit positioning"
+        );
+        let arrival_dist = compute_orbit_boundary(planet_radius);
+        assert!(
+            (final_fs.world_pos.distance(planet_pos) - arrival_dist).abs() < 1.0,
+            "World position should be pushed to arrival_dist"
+        );
+    }
+
+    #[test]
+    fn test_collision_with_obstacle_body_aborts_autopilot() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+
+        let obstacle_pos = Vec3::new(1000.0, 0.0, 0.0);
+        let obstacle_radius = 500.0;
+
+        let mut flight_state = FlightState::default();
+        flight_state.previous_pos = obstacle_pos + Vec3::new(505.0, 0.0, 0.0);
+        flight_state.world_pos = obstacle_pos + Vec3::new(501.0, 0.0, 0.0);
+        app.insert_resource(flight_state);
+
+        let mut autopilot = AutoPilotState::default();
+        autopilot.active = true;
+        autopilot.destination_index = Some(2); // Target is planet 2, but obstacle is planet 1!
+        autopilot.destination_name = "TargetPlanet";
+        autopilot.arrived = false;
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn(Planet {
+            index: 1,
+            name: "ObstaclePlanet",
+            radius: obstacle_radius,
+            orbit_radius: 1000.0,
+            orbit_speed: 0.0,
+            rotation_speed: 0.0,
+            orbit_angle: 0.0,
+            world_pos: obstacle_pos,
+        });
+
+        app.world_mut().spawn((Ship, Transform::default()));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(celestial_collision_system);
+        schedule.run(app.world_mut());
+
+        let final_ap = app.world().resource::<AutoPilotState>();
+
+        assert!(
+            !final_ap.active,
+            "Collision detection with an obstacle body MUST set autopilot.active to false"
+        );
+    }
+
+    #[test]
+    fn test_orbit_positioning_timer_completes_without_bounce() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+
+        let earth_pos = Vec3::new(149_597_870.7, 0.0, 0.0);
+        let earth_radius = 6371.0;
+        let arrival_dist = compute_orbit_boundary(earth_radius);
+
+        let mut flight_state = FlightState::default();
+        flight_state.world_pos = earth_pos + Vec3::new(arrival_dist, 0.0, 0.0);
+        flight_state.velocity = Vec3::new(-1000.0, 0.0, 0.0);
+        app.insert_resource(flight_state);
+
+        let mut autopilot = AutoPilotState::default();
+        autopilot.active = true;
+        autopilot.destination_index = Some(3);
+        autopilot.destination_name = "Earth";
+        autopilot.positioning_in_progress = true;
+        autopilot.positioning_timer = 1.5;
+        autopilot.arrived = false;
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn(Planet {
+            index: 3,
+            name: "Earth",
+            radius: earth_radius,
+            orbit_radius: 149_597_870.7,
+            orbit_speed: 0.15,
+            rotation_speed: 0.01,
+            orbit_angle: 0.0,
+            world_pos: earth_pos,
+        });
+
+        app.world_mut().spawn((Ship, Transform::default()));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems((autopilot_flight_system, celestial_collision_system).chain());
+
+        // Run simulation for 2 seconds (120 frames @ 60 FPS)
+        for _ in 0..120 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
+            schedule.run(app.world_mut());
+        }
+
+        let final_ap = app.world().resource::<AutoPilotState>();
+        let final_fs = app.world().resource::<FlightState>();
+
+        assert!(
+            final_ap.arrived,
+            "Positioning timer must count down to 0.0 and set arrived = true"
+        );
+        assert!(
+            final_ap.engine_stopped,
+            "Positioning timer completion must set engine_stopped = true"
+        );
+        assert!(
+            (final_fs.world_pos.distance(earth_pos) - arrival_dist).abs() < 50.0,
+            "Position must remain pinned at arrival_dist without bouncing"
+        );
     }
 }
