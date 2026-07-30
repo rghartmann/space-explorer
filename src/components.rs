@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+pub const AU: f32 = 149_597_870.7; // 1 Astronomical Unit in kilometers
+
 #[derive(Component)]
 pub struct Ship;
 
@@ -15,6 +17,14 @@ pub struct PilotCamera;
 #[derive(Component)]
 pub struct Sun {
     pub radius: f32,
+}
+
+#[derive(Component)]
+pub struct SunAnimation {
+    pub frame_handles: Vec<Handle<Image>>,
+    pub current_frame: usize,
+    pub frame_timer: Timer,
+    pub pulse_timer: f32,
 }
 
 #[derive(Component)]

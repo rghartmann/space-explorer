@@ -6,9 +6,9 @@ use crate::components::{Asteroid, Moon, PilotCamera, Planet, Ship, Sun};
 use crate::resources::{AutoPilotState, FlightState};
 
 #[allow(dead_code)]
-pub const SPEED_OF_LIGHT: f32 = 299_792.458; // Speed of light in km/s
-pub const STANDARD_MAX_SPEED: f32 = 12_000.0; // 12,000 km/s speed cap
-pub const MAX_SPEED_CAP: f32 = 299_792.458;  // 1.0x speed of light cap (1c FTL)
+pub const SPEED_OF_LIGHT: f32 = 299_792.458; // Speed of light in km/s (1.0c)
+pub const STANDARD_MAX_SPEED: f32 = 600_000.0; // 600,000 km/s (~2.0c impulse speed cap)
+pub const MAX_SPEED_CAP: f32 = 15_000_000.0;  // 15,000,000 km/s (~50.0c FTL warp boost cap)
 
 pub fn compute_orbit_boundary(radius: f32) -> f32 {
     if radius <= 1000.0 {
@@ -200,14 +200,14 @@ pub fn ship_flight_system(
     // Record previous world position for swept line-segment collision detection
     flight_state.previous_pos = flight_state.world_pos;
 
-    // Space Key: Toggle Boost Mode (first press) / Rapid Deceleration (second press)
+    // Space Key: Toggle FTL Boost Mode (first press) / Retro Deceleration (second press)
     if keyboard.just_pressed(KeyCode::Space) {
         if flight_state.boost_mode {
-            // Pressing Space again while in boost mode decelerates quickly
+            // Pressing Space again while in boost mode decelerates quickly towards standard speed/stop
             flight_state.boost_mode = false;
             flight_state.rapid_decel = true;
         } else {
-            // First press of Space enters boost mode
+            // First press of Space enters FTL boost mode
             flight_state.boost_mode = true;
             flight_state.rapid_decel = false;
             if autopilot.active || autopilot.arrived || autopilot.engine_stopped {
@@ -218,41 +218,60 @@ pub fn ship_flight_system(
         }
     }
 
+    // KeyX / Backspace: Emergency Full Retro-Stop (bring ship to 0 km/s)
+    if keyboard.just_pressed(KeyCode::KeyX) || keyboard.just_pressed(KeyCode::Backspace) {
+        flight_state.boost_mode = false;
+        flight_state.rapid_decel = false;
+        flight_state.velocity = Vec3::ZERO;
+    }
+
     if flight_state.boost_mode {
-        // Smooth FTL acceleration towards light speed cap
+        // Smooth FTL acceleration towards FTL warp speed cap (50.0c)
         let target_speed = MAX_SPEED_CAP;
-        let accel_rate = 1.0 - (-4.0 * dt).exp();
+        let accel_rate = 1.0 - (-5.0 * dt).exp();
         let forward = ship_transform.forward().as_vec3();
         let current_speed = flight_state.velocity.length();
-        let new_speed = current_speed.lerp(target_speed, accel_rate);
+        let new_speed = current_speed.lerp(target_speed, accel_rate).max(100_000.0);
         flight_state.velocity = forward * new_speed;
     } else if flight_state.rapid_decel {
-        // Rapid braking down to standard maximum flight speed
+        // Retro-Thruster Rapid Braking towards 0
         let decel_rate = 1.0 - (-8.0 * dt).exp();
         let current_speed = flight_state.velocity.length();
-        let new_speed = current_speed.lerp(STANDARD_MAX_SPEED, decel_rate);
-        if new_speed <= STANDARD_MAX_SPEED + 10.0 {
+        let new_speed = current_speed.lerp(0.0, decel_rate);
+        if new_speed <= 20.0 {
             flight_state.rapid_decel = false;
+            flight_state.velocity = Vec3::ZERO;
+        } else {
+            let dir = flight_state.velocity.normalize_or_zero();
+            flight_state.velocity = dir * new_speed;
         }
-        let forward = ship_transform.forward().as_vec3();
-        flight_state.velocity = forward * new_speed;
     } else if !autopilot.active && !autopilot.arrived && !autopilot.engine_stopped {
-        // Manual Impulse Propulsion controls (W/S to accelerate/decelerate)
-        let accel_power = 6000.0 * dt;
+        // Manual Impulse Propulsion controls in Vacuum (Newtonian Mechanics: ZERO drag!)
+        let accel_power = 120_000.0 * dt; // Responsive thruster acceleration (120,000 km/s^2)
         let forward = ship_transform.forward().as_vec3();
 
+        // W Key: Forward Main Thrusters (add velocity in ship forward direction)
         if keyboard.pressed(KeyCode::KeyW) {
             flight_state.velocity += forward * accel_power;
         }
+
+        // S Key: Reverse Retro-Thrusters (decelerate velocity towards 0, or apply reverse thrust)
         if keyboard.pressed(KeyCode::KeyS) {
-            flight_state.velocity -= forward * accel_power * 0.7;
+            let current_speed = flight_state.velocity.length();
+            if current_speed > 10.0 {
+                let decel_amount = accel_power * 1.25;
+                let new_speed = (current_speed - decel_amount).max(0.0);
+                let vel_dir = flight_state.velocity / current_speed;
+                flight_state.velocity = vel_dir * new_speed;
+            } else {
+                flight_state.velocity -= forward * (accel_power * 0.5);
+            }
         }
 
-        // Natural inertial damping / drag in vacuum
-        let drag = 1.0 - (-0.6 * dt).exp();
-        flight_state.velocity = flight_state.velocity.lerp(Vec3::ZERO, drag);
+        // Vacuum Inertia (Newton's First Law): Releasing controls maintains 100% constant speed!
+        // No artificial drag/damping is applied.
 
-        // Standard sub-light speed cap
+        // Sub-light impulse speed cap (600,000 km/s / ~2.0c)
         if flight_state.velocity.length() > STANDARD_MAX_SPEED {
             flight_state.velocity = flight_state.velocity.normalize() * STANDARD_MAX_SPEED;
         }
@@ -326,7 +345,7 @@ pub fn autopilot_input_system(
                 let mut closest_obstacle_dist = f32::MAX;
                 let mut chosen_waypoint = None;
 
-                let sun_radius = sun_query.iter().next().map(|s| s.radius).unwrap_or(82000.0);
+                let sun_radius = sun_query.iter().next().map(|s| s.radius).unwrap_or(696340.0);
 
                 // Check Sun at origin
                 if idx != 0 {
@@ -888,7 +907,7 @@ pub fn autopilot_flight_system(
     let target_dir = to_target.normalize_or_zero();
 
     let min_cruise_speed = 12_000.0;
-    let decel_start_dist = (arrival_dist * 4.5).clamp(12_000.0, 75_000.0);
+    let decel_start_dist = (arrival_dist * 4.5).clamp(15_000.0, 500_000.0);
 
     // Auto-engage warp mode when planet destination is far away
     if distance > decel_start_dist + 5_000.0 && distance > 60_000.0 {
@@ -901,9 +920,9 @@ pub fn autopilot_flight_system(
     }
 
     let max_cruise_speed = if flight_state.boost_mode {
-        MAX_SPEED_CAP
+        MAX_SPEED_CAP * (distance / 400_000.0).clamp(1.0, 50.0)
     } else {
-        (distance * 0.4).clamp(min_cruise_speed, MAX_SPEED_CAP)
+        (distance * 0.45).clamp(min_cruise_speed, MAX_SPEED_CAP)
     };
 
     let target_speed = if distance > decel_start_dist {

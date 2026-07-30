@@ -22,14 +22,19 @@
 
 | Key / Input | Action |
 | :--- | :--- |
-| **W / S** | Forward Thrusters / Reverse Deceleration |
+| **W** | Main Forward Thrusters (Accelerate) |
+| **S** | Retro-Thrusters (Decelerate / Reverse Thrust) |
+| **X / Backspace** | Emergency Full Retro-Stop (Full Stop in Vacuum) |
+| **Spacebar** | Toggle 50.0c FTL Warp Boost / Rapid Braking |
 | **Mouse Motion** | Flight Steering (Pitch & Yaw) |
-| **Spacebar** | Toggle FTL Warp Boost Mode / Rapid Braking |
 | **[0] - [9]** | Engage AutoNav Autopilot to Destination (Sun to Pluto) |
 | **O** | Enter / Leave Planetary Orbit |
 | **W A S D** | Orbit Pitch & Yaw Navigation (while in Orbit Mode) |
 | **Q / E** | Orbit Altitude Closer / Farther (while in Orbit Mode) |
 | **Esc** | Exit Simulator |
+
+> [!NOTE]
+> **Vacuum Physics (Newton's First Law)**: In deep space vacuum, releasing thruster controls (`W`/`S`) maintains your exact constant speed and trajectory indefinitely. Use **S** (retro-thrusters) or **X / Backspace** (full stop) to decelerate.
 
 ---
 
@@ -46,8 +51,13 @@
 
 This project incorporates public domain science datasets, NASA planetary maps, and ambient audio assets.
 
-### 🪐 Planetary & Solar System Textures
-- **Sun, Mercury, Venus, Earth, Moon, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto**:
+### ☀️ Central Sun (4K Surface & Animation)
+- **Sun Surface Map & Solar Animation Loop**:
+  - High-resolution 4K Carrington surface map and 16-frame Extreme Ultraviolet (304 Å EUV) chromosphere animation loop sourced from **NASA Scientific Visualization Studio (SVS)** [SVS 30362: Full Map of the Sun's Surface](https://svs.gsfc.nasa.gov/30362).
+  - Datasets captured by **NASA Solar Dynamics Observatory (SDO / AIA)** and **NASA STEREO (EUVI)** spacecraft.
+
+### 🪐 Planetary & Moons Textures
+- **Mercury, Venus, Earth, Moon, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto**:
   - Maps sourced and adapted from **NASA / JPL-Caltech**, **USGS Astrogeology Science Center**, and [Solar System Scope](https://www.solarsystemscope.com/textures/).
 - **Dwarf Planets (Ceres, Haumea, Makemake, Eris, Charon)**:
   - Surface imagery adapted from NASA Spacecraft Data (**Dawn**, **New Horizons**) and ESA/Hubble Space Telescope observations.

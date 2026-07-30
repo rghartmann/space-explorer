@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::components::{
     Asteroid, Moon, PilotCamera, Planet, PlanetAreaLight, Ship, SkyboxSphere, SpaceDust, Starfield, Sun,
-    SunDirectionalLight,
+    SunAnimation, SunDirectionalLight,
 };
 
 use crate::resources::FlightState;
@@ -102,9 +102,9 @@ pub fn logarithmic_distance_render_system(
 
     let cam_pos = flight_state.world_pos + ship_transform.rotation * cam_transform.translation;
 
-    let k = 0.0000035;
-    let scale_const = 25000.0;
-    let transition_dist = 50000.0;
+    let k = 0.0000003;
+    let scale_const = 30000.0;
+    let transition_dist = 100000.0;
 
     // Render Sun
     for (sun, mut transform, mut vis) in &mut sun_query {
@@ -315,6 +315,39 @@ pub fn update_directional_sunlight_system(
     if dir_to_sun != Vec3::ZERO {
         for mut light_transform in &mut sun_light_query {
             *light_transform = Transform::IDENTITY.looking_at(dir_to_sun, Vec3::Y);
+        }
+    }
+}
+
+pub fn animate_sun_surface_system(
+    time: Res<Time>,
+    mut sun_query: Query<(&Sun, &mut SunAnimation, &mut Transform, &MeshMaterial3d<StandardMaterial>)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let delta = time.delta();
+    let delta_secs = time.delta_secs();
+
+    for (_sun, mut anim, mut transform, mat_handle) in &mut sun_query {
+        // Slow natural spherical rotation of the Sun along Y-axis
+        transform.rotate_y(0.015 * delta_secs);
+
+        anim.frame_timer.tick(delta);
+        anim.pulse_timer += delta_secs;
+
+        if anim.frame_timer.just_finished() && !anim.frame_handles.is_empty() {
+            anim.current_frame = (anim.current_frame + 1) % anim.frame_handles.len();
+            let next_tex = anim.frame_handles[anim.current_frame].clone();
+
+            if let Some(mut mat) = materials.get_mut(mat_handle) {
+                mat.base_color_texture = Some(next_tex.clone());
+                mat.emissive_texture = Some(next_tex);
+            }
+        }
+
+        // Gentle solar flare emissive pulsation
+        if let Some(mut mat) = materials.get_mut(mat_handle) {
+            let pulse = (anim.pulse_timer * 1.2).sin() * 2.2;
+            mat.emissive = LinearRgba::new(35.0 + pulse, 25.0 + pulse * 0.7, 6.0, 1.0);
         }
     }
 }
