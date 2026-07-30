@@ -65,14 +65,17 @@ pub fn exit_on_esc(
 
 use crate::flight::SPEED_OF_LIGHT;
 
+type OrbitQueryFilter = (With<OrbitModeBanner>, With<OrbitModeInfoText>);
+type EnteringOrbitQueryFilter = (With<EnteringOrbitLabel>, Without<OrbitModeBanner>, Without<AutoPilotHudText>);
+
 pub fn update_hud_system(
     autopilot: Res<AutoPilotState>,
     flight_state: Res<FlightState>,
     planet_query: Query<&Planet>,
     moon_query: Query<&Moon>,
     mut text_query: Query<&mut Text, (With<AutoPilotHudText>, Without<OrbitModeInfoText>)>,
-    mut orbit_query: Query<(&mut Node, &mut Visibility, &mut Text), (With<OrbitModeBanner>, With<OrbitModeInfoText>)>,
-    mut entering_orbit_query: Query<&mut Visibility, (With<EnteringOrbitLabel>, Without<OrbitModeBanner>, Without<AutoPilotHudText>)>,
+    mut orbit_query: Query<(&mut Node, &mut Visibility, &mut Text), OrbitQueryFilter>,
+    mut entering_orbit_query: Query<&mut Visibility, EnteringOrbitQueryFilter>,
 ) {
     let speed = flight_state.velocity.length();
     let speed_of_light = SPEED_OF_LIGHT;
@@ -130,14 +133,18 @@ pub fn update_hud_system(
                         "N/A".to_string()
                     } else {
                         let eta_secs = dist_km / speed;
-                        if eta_secs < 60.0 {
+                        if !eta_secs.is_finite() {
+                            "N/A".to_string()
+                        } else if eta_secs < 60.0 {
                             format!("{:.0}s", eta_secs)
                         } else if eta_secs < 3600.0 {
                             format!("{}m {:.0}s", (eta_secs / 60.0) as u32, eta_secs % 60.0)
                         } else if eta_secs < 86400.0 {
                             format!("{}h {}m", (eta_secs / 3600.0) as u32, ((eta_secs % 3600.0) / 60.0) as u32)
-                        } else {
+                        } else if eta_secs < 86400.0 * 999.0 {
                             format!("{}d {}h", (eta_secs / 86400.0) as u32, ((eta_secs % 86400.0) / 3600.0) as u32)
+                        } else {
+                            ">999d".to_string()
                         }
                     }
                 } else {
@@ -202,9 +209,7 @@ pub fn update_hud_system(
         } else if autopilot.leaving_orbit_in_progress {
             node.display = Display::Flex;
             *vis = Visibility::Inherited;
-            **text = format!(
-                "ORBIT MODE: DISENGAGING... | REVERTING RENDER MODE & DISENGAGING ORBITAL LOCK"
-            );
+            **text = "ORBIT MODE: DISENGAGING... | REVERTING RENDER MODE & DISENGAGING ORBITAL LOCK".to_string();
         } else {
             node.display = Display::None;
             *vis = Visibility::Hidden;
@@ -220,6 +225,7 @@ pub fn update_hud_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn update_celestial_labels_system(
     flight_state: Res<FlightState>,
     camera_query: Query<(&Camera, &GlobalTransform), With<PilotCamera>>,

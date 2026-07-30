@@ -325,25 +325,25 @@ pub fn update_planet_lod_mesh_system(
             if let Some(VertexAttributeValues::Float32x3(positions)) =
                 mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION)
             {
-                for i in 0..positions.len() {
+                for (i, pos) in positions.iter_mut().enumerate() {
                     let base_p = Vec3::from_array(lod.base_positions[i]);
                     let norm_p = Vec3::from_array(lod.base_normals[i]).normalize_or_zero();
                     let disp = lod.height_displacements[i];
 
                     let curr_p = base_p + norm_p * (s_blend * disp);
-                    positions[i] = curr_p.to_array();
+                    *pos = curr_p.to_array();
                 }
             }
 
             if let Some(VertexAttributeValues::Float32x3(normals)) =
                 mesh.attribute_mut(Mesh::ATTRIBUTE_NORMAL)
             {
-                for i in 0..normals.len() {
+                for (i, norm) in normals.iter_mut().enumerate() {
                     let base_n = Vec3::from_array(lod.base_normals[i]);
                     let lod_n = Vec3::from_array(lod.lod_normals[i]);
 
                     let blended_n = (base_n * (1.0 - s_blend) + lod_n * s_blend).normalize_or_zero();
-                    normals[i] = blended_n.to_array();
+                    *norm = blended_n.to_array();
                 }
             }
         }

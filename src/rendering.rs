@@ -8,6 +8,8 @@ use crate::components::{
 use crate::resources::FlightState;
 
 type NonRenderObjectFilter = (Without<Ship>, Without<PilotCamera>, Without<PlanetAreaLight>);
+type AreaLightFilter = (Without<Planet>, Without<PlanetAreaLight>);
+type SunLightFilter = (With<SunDirectionalLight>, Without<Ship>, Without<PilotCamera>);
 
 type SunRenderQueryFilter = (With<Sun>, Without<Planet>, Without<Moon>, Without<Asteroid>, Without<SpaceDust>, Without<Starfield>, Without<SkyboxSphere>, NonRenderObjectFilter);
 type PlanetRenderQueryFilter = (With<Planet>, Without<Sun>, Without<Moon>, Without<Asteroid>, Without<SpaceDust>, Without<Starfield>, Without<SkyboxSphere>, NonRenderObjectFilter);
@@ -73,6 +75,7 @@ fn compute_logarithmic_transform(
     (dir * d_vis, Vec3::splat(final_scale), Visibility::Inherited)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn logarithmic_distance_render_system(
     flight_state: Res<FlightState>,
     ship_query: Query<&Transform, With<Ship>>,
@@ -117,7 +120,7 @@ pub fn logarithmic_distance_render_system(
     // Render Asteroids
     for (asteroid, mut transform, mut vis) in &mut asteroid_query {
         let d_real = asteroid.world_pos.distance(cam_pos);
-        if d_real > 150_000.0 || d_real < 1.2 {
+        if !(1.2..=150_000.0).contains(&d_real) {
             *vis = Visibility::Hidden;
             continue;
         }
@@ -130,7 +133,7 @@ pub fn logarithmic_distance_render_system(
     // Render Space Dust Clouds
     for (dust, mut transform, mut vis) in &mut dust_query {
         let d_real = dust.world_pos.distance(cam_pos);
-        if d_real > 300_000.0 || d_real < 1.2 {
+        if !(1.2..=300_000.0).contains(&d_real) {
             *vis = Visibility::Hidden;
             continue;
         }
@@ -160,7 +163,7 @@ pub fn logarithmic_distance_render_system(
 pub fn update_planet_area_lights_system(
     mut area_light_query: Query<(&PlanetAreaLight, &ChildOf, &mut PointLight, &mut Transform)>,
     planet_query: Query<(&Planet, &Transform), Without<PlanetAreaLight>>,
-    moon_query: Query<(&Moon, &Transform), (Without<Planet>, Without<PlanetAreaLight>)>,
+    moon_query: Query<(&Moon, &Transform), AreaLightFilter>,
 ) {
     for (area_light, child_of, mut light, mut transform) in &mut area_light_query {
         let parent_entity = child_of.parent();
@@ -193,7 +196,7 @@ pub fn update_directional_sunlight_system(
     flight_state: Res<FlightState>,
     ship_query: Query<&Transform, With<Ship>>,
     _camera_query: Query<&Transform, (With<PilotCamera>, Without<Ship>)>,
-    mut sun_light_query: Query<&mut Transform, (With<SunDirectionalLight>, Without<Ship>, Without<PilotCamera>)>,
+    mut sun_light_query: Query<&mut Transform, SunLightFilter>,
 ) {
     let Ok(ship_transform) = ship_query.single() else { return; };
     let cam_pos = flight_state.world_pos + ship_transform.rotation * Vec3::new(0.0, 1.2, 4.0);

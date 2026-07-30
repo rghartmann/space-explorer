@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use crate::components::{Asteroid, Moon, PilotCamera, Planet, Ship, Sun};
 use crate::resources::{AppState, AutoPilotState, FlightState};
 
-pub const SPEED_OF_LIGHT: f32 = 299_792.458; // Speed of light in km/s (1.0c)
+pub const SPEED_OF_LIGHT: f32 = 299_792.47; // Speed of light in km/s (1.0c)
 pub const STANDARD_MAX_SPEED: f32 = 600_000.0; // 600,000 km/s (~2.0c impulse speed cap)
 pub const MAX_SPEED_CAP: f32 = 15_000_000.0;  // 15,000,000 km/s (~50.0c FTL warp boost cap)
 
@@ -53,6 +53,33 @@ pub fn rotation_looking_to(dir: Vec3) -> Quat {
     Quat::from_rotation_arc(Vec3::NEG_Z, dir)
 }
 
+pub fn get_celestial_target_info(
+    destination_idx: usize,
+    destination_name: &str,
+    sun_query: &Query<&Sun>,
+    planet_query: &Query<&Planet>,
+    moon_query: &Query<&Moon>,
+) -> Option<(Vec3, f32)> {
+    if destination_idx == 0 {
+        let sun = sun_query.iter().next()?;
+        Some((Vec3::ZERO, sun.radius))
+    } else if destination_idx == 100 {
+        for moon in moon_query {
+            if moon.name == destination_name {
+                return Some((moon.world_pos, moon.radius));
+            }
+        }
+        None
+    } else {
+        for planet in planet_query {
+            if planet.index == destination_idx {
+                return Some((planet.world_pos, planet.radius));
+            }
+        }
+        None
+    }
+}
+
 pub fn hide_cursor_system(
     mut cursor_query: Query<&mut bevy::window::CursorOptions, With<Window>>,
 ) {
@@ -64,6 +91,7 @@ pub fn hide_cursor_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn pilot_freelook_system(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -95,27 +123,17 @@ pub fn pilot_freelook_system(
         if let Some(waypoint) = autopilot.current_waypoint {
             target_pos = waypoint;
             found = true;
-        } else if let Some(destination_idx) = autopilot.destination_index {
-            if destination_idx == 0 {
-                target_pos = sun_query.iter().next().map(|_| Vec3::ZERO).unwrap_or(Vec3::ZERO);
-                found = true;
-            } else if destination_idx == 100 {
-                for moon in &moon_query {
-                    if moon.name == autopilot.destination_name {
-                        target_pos = moon.world_pos;
-                        found = true;
-                        break;
-                    }
-                }
-            } else {
-                for planet in &planet_query {
-                    if planet.index == destination_idx {
-                        target_pos = planet.world_pos;
-                        found = true;
-                        break;
-                    }
-                }
-            }
+        } else if let Some((pos, _)) = autopilot.destination_index.and_then(|idx| {
+            get_celestial_target_info(
+                idx,
+                autopilot.destination_name,
+                &sun_query,
+                &planet_query,
+                &moon_query,
+            )
+        }) {
+            target_pos = pos;
+            found = true;
         }
 
         if found {
@@ -213,7 +231,7 @@ pub fn pilot_freelook_system(
             );
             let shake_rot = Quat::from_euler(EulerRot::YXZ, (t * 1.9).sin() * 0.005, (t * 2.3).cos() * 0.005, (t * 1.5).cos() * 0.007);
             target_pos += shake_offset;
-            target_rot = target_rot * shake_rot;
+            target_rot *= shake_rot;
         }
 
         let cam_decay = 1.0 - (-8.0 * dt).exp();
@@ -372,20 +390,14 @@ pub fn autopilot_input_system(
             }
 
             let mut target_pos = Vec3::ZERO;
-            if idx == 100 {
-                for moon in &moon_query {
-                    if moon.name == name {
-                        target_pos = moon.world_pos;
-                        break;
-                    }
-                }
-            } else if idx != 0 {
-                for planet in &planet_query {
-                    if planet.index == idx {
-                        target_pos = planet.world_pos;
-                        break;
-                    }
-                }
+            if let Some((pos, _)) = get_celestial_target_info(
+                idx,
+                name,
+                &sun_query,
+                &planet_query,
+                &moon_query,
+            ) {
+                target_pos = pos;
             }
 
             // Multi-body path-finding obstacle avoidance around Sun and all Planets along trajectory
@@ -478,33 +490,16 @@ pub fn autopilot_pathfinding_system(
 
     let Some(destination_idx) = autopilot.destination_index else { return; };
 
-    let mut final_target_pos = Vec3::ZERO;
-    let mut found = false;
-
-    if destination_idx == 0 {
-        final_target_pos = Vec3::ZERO;
-        found = true;
-    } else if destination_idx == 100 {
-        for moon in &moon_query {
-            if moon.name == autopilot.destination_name {
-                final_target_pos = moon.world_pos;
-                found = true;
-                break;
-            }
-        }
-    } else {
-        for planet in &planet_query {
-            if planet.index == destination_idx {
-                final_target_pos = planet.world_pos;
-                found = true;
-                break;
-            }
-        }
-    }
-
-    if !found {
-        return;
-    }
+    let (final_target_pos, _) = match get_celestial_target_info(
+        destination_idx,
+        autopilot.destination_name,
+        &sun_query,
+        &planet_query,
+        &moon_query,
+    ) {
+        Some(info) => info,
+        None => return,
+    };
 
     let start_pos = flight_state.world_pos;
 
@@ -606,36 +601,20 @@ pub fn stop_engine_input_system(
             let mut dest_name = "Sun";
             let mut found = false;
 
-            if let Some(idx) = autopilot.destination_index {
-                if idx == 0 {
-                    dest_pos = Vec3::ZERO;
-                    if let Ok(sun) = sun_query.single() {
-                        dest_radius = sun.radius;
-                    }
-                    found = true;
-                } else if idx == 100 {
-                    for moon in &moon_query {
-                        if moon.name == autopilot.destination_name {
-                            dest_pos = moon.world_pos;
-                            dest_radius = moon.radius;
-                            dest_idx = 100;
-                            dest_name = moon.name;
-                            found = true;
-                            break;
-                        }
-                    }
-                } else {
-                    for planet in &planet_query {
-                        if planet.index == idx {
-                            dest_pos = planet.world_pos;
-                            dest_radius = planet.radius;
-                            dest_idx = planet.index;
-                            dest_name = planet.name;
-                            found = true;
-                            break;
-                        }
-                    }
-                }
+            if let Some((pos, radius)) = autopilot.destination_index.and_then(|idx| {
+                get_celestial_target_info(
+                    idx,
+                    autopilot.destination_name,
+                    &sun_query,
+                    &planet_query,
+                    &moon_query,
+                )
+            }) {
+                dest_pos = pos;
+                dest_radius = radius;
+                dest_idx = autopilot.destination_index.unwrap_or(0);
+                dest_name = autopilot.destination_name;
+                found = true;
             }
 
             if !found {
@@ -691,6 +670,7 @@ pub fn stop_engine_input_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn autopilot_flight_system(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -738,30 +718,18 @@ pub fn autopilot_flight_system(
     let mut destination_radius = 6371.0;
     let mut found = false;
 
-    if let Some(destination_idx) = autopilot.destination_index {
-        if destination_idx == 0 {
-            destination_pos = sun_query.iter().next().map(|_| Vec3::ZERO).unwrap_or(Vec3::ZERO);
-            destination_radius = 696_340.0;
-            found = true;
-        } else if destination_idx == 100 {
-            for moon in &moon_query {
-                if moon.name == autopilot.destination_name {
-                    destination_pos = moon.world_pos;
-                    destination_radius = moon.radius;
-                    found = true;
-                    break;
-                }
-            }
-        } else {
-            for planet in &planet_query {
-                if planet.index == destination_idx {
-                    destination_pos = planet.world_pos;
-                    destination_radius = planet.radius;
-                    found = true;
-                    break;
-                }
-            }
-        }
+    if let Some((pos, radius)) = autopilot.destination_index.and_then(|destination_idx| {
+        get_celestial_target_info(
+            destination_idx,
+            autopilot.destination_name,
+            &sun_query,
+            &planet_query,
+            &moon_query,
+        )
+    }) {
+        destination_pos = pos;
+        destination_radius = radius;
+        found = true;
     }
 
     if !found {

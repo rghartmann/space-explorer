@@ -17,6 +17,43 @@ impl Plugin for AudioPlugin {
     }
 }
 
+pub fn build_wav_bytes(pcm: &[i16], sample_rate: u32) -> Vec<u8> {
+    let data_len = (pcm.len() * 2) as u32;
+    let file_len = 36 + data_len;
+    let mut wav = Vec::with_capacity(44 + pcm.len() * 2);
+
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&file_len.to_le_bytes());
+    wav.extend_from_slice(b"WAVE");
+    wav.extend_from_slice(b"fmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&sample_rate.to_le_bytes());
+    wav.extend_from_slice(&(sample_rate * 2).to_le_bytes());
+    wav.extend_from_slice(&2u16.to_le_bytes());
+    wav.extend_from_slice(&16u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+
+    for &sample in pcm {
+        wav.extend_from_slice(&sample.to_le_bytes());
+    }
+    wav
+}
+
+pub fn ensure_audio_file(file_name: &str, generator: impl FnOnce() -> Vec<u8>) {
+    let dir = Path::new("assets/audio");
+    if !dir.exists() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let file_path = dir.join(file_name);
+    if !file_path.exists() {
+        let wav_data = generator();
+        let _ = fs::write(file_path, wav_data);
+    }
+}
+
 pub fn generate_engine_hum_wav() -> Vec<u8> {
     let sample_rate = 44100;
     let duration_secs = 4.0;
@@ -35,40 +72,11 @@ pub fn generate_engine_hum_wav() -> Vec<u8> {
         pcm.push(val);
     }
 
-    let data_len = (pcm.len() * 2) as u32;
-    let file_len = 36 + data_len;
-    let mut wav = Vec::with_capacity(44 + pcm.len() * 2);
-
-    wav.extend_from_slice(b"RIFF");
-    wav.extend_from_slice(&file_len.to_le_bytes());
-    wav.extend_from_slice(b"WAVE");
-    wav.extend_from_slice(b"fmt ");
-    wav.extend_from_slice(&16u32.to_le_bytes());
-    wav.extend_from_slice(&1u16.to_le_bytes());
-    wav.extend_from_slice(&1u16.to_le_bytes());
-    wav.extend_from_slice(&(sample_rate as u32).to_le_bytes());
-    wav.extend_from_slice(&((sample_rate * 2) as u32).to_le_bytes());
-    wav.extend_from_slice(&2u16.to_le_bytes());
-    wav.extend_from_slice(&16u16.to_le_bytes());
-    wav.extend_from_slice(b"data");
-    wav.extend_from_slice(&data_len.to_le_bytes());
-
-    for sample in pcm {
-        wav.extend_from_slice(&sample.to_le_bytes());
-    }
-    wav
+    build_wav_bytes(&pcm, sample_rate)
 }
 
 pub fn ensure_engine_hum_file() {
-    let dir = Path::new("assets/audio");
-    if !dir.exists() {
-        let _ = fs::create_dir_all(dir);
-    }
-    let file_path = dir.join("engine_hum.wav");
-    if !file_path.exists() {
-        let wav_data = generate_engine_hum_wav();
-        let _ = fs::write(file_path, wav_data);
-    }
+    ensure_audio_file("engine_hum.wav", generate_engine_hum_wav);
 }
 
 pub fn generate_ambient_piano_wav() -> Vec<u8> {
@@ -99,40 +107,11 @@ pub fn generate_ambient_piano_wav() -> Vec<u8> {
         pcm.push(val);
     }
 
-    let data_len = (pcm.len() * 2) as u32;
-    let file_len = 36 + data_len;
-    let mut wav = Vec::with_capacity(44 + pcm.len() * 2);
-
-    wav.extend_from_slice(b"RIFF");
-    wav.extend_from_slice(&file_len.to_le_bytes());
-    wav.extend_from_slice(b"WAVE");
-    wav.extend_from_slice(b"fmt ");
-    wav.extend_from_slice(&16u32.to_le_bytes());
-    wav.extend_from_slice(&1u16.to_le_bytes());
-    wav.extend_from_slice(&1u16.to_le_bytes());
-    wav.extend_from_slice(&(sample_rate as u32).to_le_bytes());
-    wav.extend_from_slice(&((sample_rate * 2) as u32).to_le_bytes());
-    wav.extend_from_slice(&2u16.to_le_bytes());
-    wav.extend_from_slice(&16u16.to_le_bytes());
-    wav.extend_from_slice(b"data");
-    wav.extend_from_slice(&data_len.to_le_bytes());
-
-    for sample in pcm {
-        wav.extend_from_slice(&sample.to_le_bytes());
-    }
-    wav
+    build_wav_bytes(&pcm, sample_rate)
 }
 
 pub fn ensure_ambient_piano_file() {
-    let dir = Path::new("assets/audio");
-    if !dir.exists() {
-        let _ = fs::create_dir_all(dir);
-    }
-    let file_path = dir.join("ambient_piano.wav");
-    if !file_path.exists() {
-        let wav_data = generate_ambient_piano_wav();
-        let _ = fs::write(file_path, wav_data);
-    }
+    ensure_audio_file("ambient_piano.wav", generate_ambient_piano_wav);
 }
 
 pub fn engine_sound_system(
@@ -158,5 +137,25 @@ pub fn engine_sound_system(
 
         sink.set_speed(new_pitch);
         sink.set_volume(bevy::audio::Volume::Linear(target_volume));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_wav_bytes_header() {
+        let pcm = vec![0i16; 100];
+        let wav = build_wav_bytes(&pcm, 44100);
+
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(&wav[12..16], b"fmt ");
+        assert_eq!(&wav[36..40], b"data");
+
+        let data_len = u32::from_le_bytes(wav[40..44].try_into().unwrap());
+        assert_eq!(data_len, 200);
+        assert_eq!(wav.len(), 44 + 200);
     }
 }

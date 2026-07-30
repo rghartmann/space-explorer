@@ -201,6 +201,7 @@ pub fn spawn_thruster_emitters(
 }
 
 
+#[allow(clippy::too_many_arguments)]
 pub fn thruster_particle_system(
     mut commands: Commands,
     time: Res<Time>,

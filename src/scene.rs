@@ -202,13 +202,13 @@ pub fn setup_scene(
     // SHIP AVATAR & 3RD-PERSON CAMERA PERSPECTIVE
     // ----------------------------------------------------
     // Pre-calculate Earth position to align initial ship spawn direction towards Earth
-    let earth_orbit_radius = 1.000000 * AU; // 149,597,870.7 km
+    let earth_orbit_radius = 1.0 * AU; // 149,597,870.7 km
     let earth_orbit_speed = 0.1500;
     let earth_angle = next_orbit_angle();
     let earth_pos = Vec3::new(earth_orbit_radius * earth_angle.cos(), 0.0, earth_orbit_radius * earth_angle.sin());
 
     // Calculate initial deep-space ship spawn position (~2.2 AU / 329.1M km from Sun) facing Earth
-    let initial_spawn_dist = 2.200000 * AU;
+    let initial_spawn_dist = 2.2 * AU;
     let initial_spawn_pos = earth_pos.normalize() * initial_spawn_dist + Vec3::new(0.0, 150_000.0, 0.0);
     let dir_to_earth = (earth_pos - initial_spawn_pos).normalize_or_zero();
     let initial_ship_rot = crate::flight::rotation_looking_to(dir_to_earth);
@@ -522,7 +522,7 @@ pub fn setup_scene(
     spawn_planet_area_light(&mut commands, moon_entity, moon_pos, 1737.4);
 
     // --- PLANET 4: MARS (1.5237 AU) ---
-    let mars_orbit_radius = 1.523680 * AU; // 227,938,284.0 km
+    let mars_orbit_radius = 1.523_68 * AU; // 227,938,284.0 km
     let mars_orbit_speed = 0.0798; // 0.53x Earth speed
     let mars_angle = next_orbit_angle();
     let mars_pos = Vec3::new(mars_orbit_radius * mars_angle.cos(), 0.0, mars_orbit_radius * mars_angle.sin());
@@ -552,7 +552,7 @@ pub fn setup_scene(
     spawn_planet_area_light(&mut commands, mars_entity, mars_pos, 3389.5);
 
     // --- DWARF PLANET: CERES (2.767 AU) ---
-    let ceres_orbit_radius = 2.767000 * AU; // 413,937,308.0 km
+    let ceres_orbit_radius = 2.767 * AU; // 413,937,308.0 km
     let ceres_orbit_speed = 0.0326;
     let ceres_angle = next_orbit_angle();
     let ceres_pos = Vec3::new(ceres_orbit_radius * ceres_angle.cos(), 0.0, ceres_orbit_radius * ceres_angle.sin());
@@ -658,7 +658,7 @@ pub fn setup_scene(
     }
 
     // --- PLANET 5: JUPITER & GALILEAN MOONS (5.2044 AU) ---
-    let jupiter_orbit_radius = 5.204400 * AU; // 778,567,160.0 km
+    let jupiter_orbit_radius = 5.204_4 * AU; // 778,567,160.0 km
     let jupiter_orbit_speed = 0.012645; // 0.0843x Earth speed
     let jupiter_angle = next_orbit_angle();
     let jupiter_pos = Vec3::new(jupiter_orbit_radius * jupiter_angle.cos(), 0.0, jupiter_orbit_radius * jupiter_angle.sin());
@@ -747,7 +747,7 @@ pub fn setup_scene(
     spawn_planet_area_light(&mut commands, europa_entity, europa_pos, 1560.8);
 
     // --- PLANET 6: SATURN & REALISTIC 2D RING SYSTEM WITH DUST & ROCKS (9.5826 AU) ---
-    let saturn_orbit_radius = 9.582600 * AU; // 1,433,536,554.0 km
+    let saturn_orbit_radius = 9.582_6 * AU; // 1,433,536,554.0 km
     let saturn_orbit_speed = 0.005085; // 0.0339x Earth speed
     let saturn_angle = next_orbit_angle();
     let saturn_pos = Vec3::new(saturn_orbit_radius * saturn_angle.cos(), 0.0, saturn_orbit_radius * saturn_angle.sin());
@@ -840,7 +840,7 @@ pub fn setup_scene(
     }
 
     // --- PLANET 7: URANUS (19.201 AU) ---
-    let uranus_orbit_radius = 19.201000 * AU; // 2,872,428,715.0 km
+    let uranus_orbit_radius = 19.201 * AU; // 2,872,428,715.0 km
     let uranus_orbit_speed = 0.001785; // 0.0119x Earth speed
     let uranus_angle = next_orbit_angle();
     let uranus_pos = Vec3::new(uranus_orbit_radius * uranus_angle.cos(), 0.0, uranus_orbit_radius * uranus_angle.sin());
@@ -870,7 +870,7 @@ pub fn setup_scene(
     spawn_planet_area_light(&mut commands, uranus_entity, uranus_pos, 25362.0);
 
     // --- PLANET 8: NEPTUNE (30.047 AU) ---
-    let neptune_orbit_radius = 30.047000 * AU; // 4,494,967,221.0 km
+    let neptune_orbit_radius = 30.047 * AU; // 4,494,967,221.0 km
     let neptune_orbit_speed = 0.000915; // 0.0061x Earth speed
     let neptune_angle = next_orbit_angle();
     let neptune_pos = Vec3::new(neptune_orbit_radius * neptune_angle.cos(), 0.0, neptune_orbit_radius * neptune_angle.sin());
@@ -900,7 +900,7 @@ pub fn setup_scene(
     spawn_planet_area_light(&mut commands, neptune_entity, neptune_pos, 24622.0);
 
     // --- DWARF PLANET 2: PLUTO & MOON CHARON (39.482 AU) ---
-    let pluto_orbit_radius = 39.482000 * AU; // 5,906,382,920.0 km
+    let pluto_orbit_radius = 39.482 * AU; // 5,906,382,920.0 km
     let pluto_orbit_speed = 0.00060; // 0.0040x Earth speed
     let pluto_angle = next_orbit_angle();
     let pluto_pos = Vec3::new(pluto_orbit_radius * pluto_angle.cos(), 0.0, pluto_orbit_radius * pluto_angle.sin());
@@ -959,7 +959,7 @@ pub fn setup_scene(
     spawn_planet_area_light(&mut commands, charon_entity, charon_pos, 606.0);
 
     // --- DWARF PLANET 3: HAUMEA (43.218 AU) ---
-    let haumea_orbit_radius = 43.218000 * AU; // 6,465,321,155.0 km
+    let haumea_orbit_radius = 43.218 * AU; // 6,465,321,155.0 km
     let haumea_orbit_speed = 0.000525; // 0.0035x Earth speed
     let haumea_angle = next_orbit_angle();
     let haumea_pos = Vec3::new(haumea_orbit_radius * haumea_angle.cos(), 0.0, haumea_orbit_radius * haumea_angle.sin());
@@ -990,7 +990,7 @@ pub fn setup_scene(
     spawn_planet_area_light(&mut commands, haumea_entity, haumea_pos, 1050.0);
 
     // --- DWARF PLANET 4: MAKEMAKE (45.563 AU) ---
-    let makemake_orbit_radius = 45.563000 * AU; // 6,816,027,787.0 km
+    let makemake_orbit_radius = 45.563 * AU; // 6,816,027,787.0 km
     let makemake_orbit_speed = 0.00048; // 0.0032x Earth speed
     let makemake_angle = next_orbit_angle();
     let makemake_pos = Vec3::new(makemake_orbit_radius * makemake_angle.cos(), 0.0, makemake_orbit_radius * makemake_angle.sin());
@@ -1020,7 +1020,7 @@ pub fn setup_scene(
     spawn_planet_area_light(&mut commands, makemake_entity, makemake_pos, 715.0);
 
     // --- DWARF PLANET 5: ERIS (67.781 AU) ---
-    let eris_orbit_radius = 67.781000 * AU; // 10,139,893,275.0 km
+    let eris_orbit_radius = 67.781 * AU; // 10,139,893,275.0 km
     let eris_orbit_speed = 0.00027; // 0.0018x Earth speed
     let eris_angle = next_orbit_angle();
     let eris_pos = Vec3::new(eris_orbit_radius * eris_angle.cos(), 0.0, eris_orbit_radius * eris_angle.sin());
@@ -1187,17 +1187,13 @@ pub fn create_uv_sphere(radius: f32, sectors: u32, stacks: u32) -> Mesh {
     if let Some(VertexAttributeValues::Float32x3(positions)) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
         for p in positions.iter_mut() {
             // Swap Y and Z so the UV sphere polar axis (+Z in Bevy UvSphere) aligns with +Y (Up)
-            let tmp = p[1];
-            p[1] = p[2];
-            p[2] = tmp;
+            p.swap(1, 2);
         }
     }
 
     if let Some(VertexAttributeValues::Float32x3(normals)) = mesh.attribute_mut(Mesh::ATTRIBUTE_NORMAL) {
         for n in normals.iter_mut() {
-            let tmp = n[1];
-            n[1] = n[2];
-            n[2] = tmp;
+            n.swap(1, 2);
         }
     }
 
@@ -1340,7 +1336,7 @@ pub fn setup_loading_screen(
     }
 
     commands.spawn((
-        Camera2d::default(),
+        Camera2d,
         Camera {
             order: 100,
             clear_color: ClearColorConfig::Custom(Color::srgb(0.001, 0.001, 0.003)),
