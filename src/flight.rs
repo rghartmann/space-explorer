@@ -12,13 +12,13 @@ pub const MAX_SPEED_CAP: f32 = 15_000_000.0;  // 15,000,000 km/s (~50.0c FTL war
 
 pub fn compute_orbit_boundary(radius: f32) -> f32 {
     if radius <= 1000.0 {
-        radius * 1.35 + 50.0
+        radius * 2.5 + 500.0
     } else if radius <= 10000.0 {
-        radius * 1.25 + 150.0
+        radius * 2.2 + 1500.0
     } else if radius <= 100000.0 {
-        radius * 1.18 + 500.0
+        radius * 2.0 + 12000.0
     } else {
-        radius * 1.15 + 1000.0
+        radius * 3.0 + 250_000.0
     }
 }
 
@@ -27,8 +27,7 @@ pub fn rotation_looking_to(dir: Vec3) -> Quat {
     if dir == Vec3::ZERO {
         return Quat::IDENTITY;
     }
-    let up = if dir.y.abs() > 0.95 { Vec3::Z } else { Vec3::Y };
-    Transform::IDENTITY.looking_to(dir, up).rotation
+    Quat::from_rotation_arc(Vec3::NEG_Z, dir)
 }
 
 pub fn hide_cursor_system(
@@ -97,7 +96,9 @@ pub fn pilot_freelook_system(
         if found {
             let to_target = (target_pos - flight_state.world_pos).normalize_or_zero();
             if to_target != Vec3::ZERO {
-                let destination_rot = rotation_looking_to(to_target);
+                let current_forward = ship_transform.forward().as_vec3();
+                let rot_diff = Quat::from_rotation_arc(current_forward, to_target);
+                let destination_rot = rot_diff * ship_transform.rotation;
                 let rot_decay = 1.0 - (-12.0 * dt).exp();
                 ship_transform.rotation = ship_transform.rotation.slerp(destination_rot, rot_decay);
                 flight_state.angular_velocity = Vec3::ZERO;
@@ -229,6 +230,7 @@ pub fn ship_flight_system(
             autopilot.current_waypoint = None;
             autopilot.destination_index = None;
             autopilot.prev_destination_pos = None;
+            autopilot.orbit_initialized = false;
             flight_state.boost_mode = false;
             flight_state.rapid_decel = false;
             flight_state.angular_velocity = Vec3::ZERO;
@@ -379,7 +381,7 @@ pub fn autopilot_input_system(
                     if proj > 1000.0 && proj < dist - 1000.0 {
                         let closest_pt = start_pos + line_dir * proj;
                         let clearance = closest_pt.length();
-                        let min_clearance = (sun_radius * 2.2).max(50_000.0);
+                        let min_clearance = (sun_radius * 2.8).max(250_000.0);
                         if clearance < min_clearance {
                             let perp = Vec3::Y.cross(line_dir).normalize_or_zero();
                             let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
@@ -431,6 +433,7 @@ pub fn autopilot_input_system(
             autopilot.leaving_orbit_in_progress = false;
             autopilot.leaving_orbit_timer = 0.0;
             autopilot.orbit_speed_multiplier = 1.0;
+            autopilot.orbit_initialized = false;
         }
     }
 }
@@ -505,7 +508,7 @@ pub fn autopilot_pathfinding_system(
         if proj > 1000.0 && proj < dist - 1000.0 {
             let closest_pt = start_pos + line_dir * proj;
             let clearance = closest_pt.length();
-            let min_clearance = (sun_radius * 2.2).max(100_000.0);
+            let min_clearance = (sun_radius * 2.8).max(250_000.0);
             if clearance < min_clearance {
                 let perp = Vec3::Y.cross(line_dir).normalize_or_zero();
                 let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
@@ -567,6 +570,7 @@ pub fn stop_engine_input_system(
             autopilot.positioning_in_progress = false;
             autopilot.positioning_timer = 0.0;
             autopilot.current_waypoint = None;
+            autopilot.orbit_initialized = false;
         } else {
             // Determine target destination body position and radius
             let mut dest_pos = Vec3::ZERO;
@@ -766,7 +770,9 @@ pub fn autopilot_flight_system(
         autopilot.positioning_timer -= dt;
         let look_dir = (destination_pos - flight_state.world_pos).normalize_or_zero();
         if look_dir != Vec3::ZERO {
-            let target_rot = rotation_looking_to(look_dir);
+            let current_forward = ship_transform.forward().as_vec3();
+            let rot_diff = Quat::from_rotation_arc(current_forward, look_dir);
+            let target_rot = rot_diff * ship_transform.rotation;
             let rot_decay = 1.0 - (-6.0 * dt).exp();
             ship_transform.rotation = ship_transform.rotation.slerp(target_rot, rot_decay);
         }
@@ -810,10 +816,6 @@ pub fn autopilot_flight_system(
             mouse_delta += event.delta;
         }
 
-        let current_offset = flight_state.world_pos - prev_pos;
-        let current_dist = current_offset.length();
-        let safe_dir = if current_dist > 0.1 { current_offset / current_dist } else { Vec3::Z };
-
         let mouse_sens = 0.0015;
 
         // A/D Keys rotate horizontally around planet
@@ -854,39 +856,41 @@ pub fn autopilot_flight_system(
             flight_state.orbit_roll -= 1.5 * dt;
         }
 
-        let mut new_dir = safe_dir;
+        let current_offset = flight_state.world_pos - prev_pos;
+        let current_dist = current_offset.length();
+        let safe_dir = if current_dist > 0.1 { current_offset / current_dist } else { Vec3::Z };
 
-        let up_axis = if new_dir.y.abs() > 0.95 { Vec3::Z } else { Vec3::Y };
+        // Initialize spherical orbit angles from current relative position on first orbit frame
+        if !autopilot.orbit_initialized {
+            autopilot.orbit_pitch = safe_dir.y.clamp(-0.999, 0.999).asin();
+            autopilot.orbit_yaw = safe_dir.x.atan2(safe_dir.z);
+            autopilot.orbit_initialized = true;
+        }
 
         // Base automatic orbital revolution rate + manual Key A/D and mouse input
         let auto_orbit_rate = 1.0;
-        let horiz_rot_angle = (-mouse_delta.x * mouse_sens) + ((auto_orbit_rate + horiz_key_input) * orbit_speed * dt);
-        if horiz_rot_angle != 0.0 {
-            let rot_quat = Quat::from_axis_angle(up_axis, horiz_rot_angle);
-            new_dir = rot_quat * new_dir;
-        }
+        let horiz_delta = (-mouse_delta.x * mouse_sens) + ((auto_orbit_rate + horiz_key_input) * orbit_speed * dt);
+        let vert_delta = mouse_delta.y * mouse_sens;
 
-        // Vert (pitch) rot angle uses mouse Y delta (Un-inverted!)
-        let vert_rot_angle = mouse_delta.y * mouse_sens;
-        if vert_rot_angle != 0.0 {
-            let mut right_axis = up_axis.cross(new_dir).normalize_or_zero();
-            if right_axis == Vec3::ZERO {
-                right_axis = Vec3::X;
-            }
-            let rot_quat = Quat::from_axis_angle(right_axis, vert_rot_angle);
-            new_dir = rot_quat * new_dir;
-        }
+        autopilot.orbit_yaw += horiz_delta;
+        autopilot.orbit_pitch = (autopilot.orbit_pitch + vert_delta).clamp(-1.54, 1.54);
 
-        new_dir = new_dir.normalize_or_zero();
+        let cos_p = autopilot.orbit_pitch.cos();
+        let sin_p = autopilot.orbit_pitch.sin();
+        let cos_y = autopilot.orbit_yaw.cos();
+        let sin_y = autopilot.orbit_yaw.sin();
 
-        let radial_speed = (arrival_dist * 0.15).clamp(50.0, 1500.0);
-        let min_dist = (destination_radius * 1.15).max(destination_radius + 5.0);
+        let new_dir = Vec3::new(cos_p * sin_y, sin_p, cos_p * cos_y);
+
+        let radial_speed = (arrival_dist * 0.25).clamp(50.0, 500_000.0);
+        let min_dist = (destination_radius * 1.6).max(destination_radius + 50.0);
         let max_dist = arrival_dist * 5.0;
 
+        let effective_dist = if current_dist > 0.1 { current_dist } else { arrival_dist };
         let new_dist = if radial_input != 0.0 {
-            (current_dist + radial_input * radial_speed * dt).clamp(min_dist, max_dist)
+            (effective_dist + radial_input * radial_speed * dt).clamp(min_dist, max_dist)
         } else {
-            current_dist
+            effective_dist.clamp(min_dist, max_dist)
         };
 
         flight_state.world_pos = destination_pos + new_dir * new_dist;
@@ -897,34 +901,19 @@ pub fn autopilot_flight_system(
             Vec3::ZERO
         };
 
-        let is_input_active = true;
-
-        if is_input_active {
-            let mut orbit_tangent = Vec3::ZERO;
-            if horiz_rot_angle != 0.0 {
-                let right_axis = up_axis.cross(new_dir).normalize_or_zero();
-                let right = if right_axis == Vec3::ZERO { Vec3::X } else { right_axis };
-                orbit_tangent += right.cross(new_dir).normalize_or_zero() * horiz_rot_angle.signum();
-            }
-            if vert_rot_angle != 0.0 {
-                let right_axis = up_axis.cross(new_dir).normalize_or_zero();
-                let right = if right_axis == Vec3::ZERO { Vec3::X } else { right_axis };
-                orbit_tangent += right.cross(new_dir).normalize_or_zero() * vert_rot_angle.signum();
-            }
-            orbit_tangent = orbit_tangent.normalize_or_zero();
-            let tangential_vel = orbit_tangent * (new_dist * orbit_speed);
-            let radial_vel = new_dir * (radial_input * radial_speed);
-            flight_state.velocity = planet_vel + tangential_vel + radial_vel;
-        } else {
-            flight_state.velocity = planet_vel;
-        }
+        let orbit_tangent = Vec3::new(-sin_p * sin_y, cos_p, -sin_p * cos_y).normalize_or_zero();
+        let tangential_vel = orbit_tangent * (new_dist * orbit_speed);
+        let radial_vel = new_dir * (radial_input * radial_speed);
+        flight_state.velocity = planet_vel + tangential_vel + radial_vel;
 
         autopilot.prev_destination_pos = Some(destination_pos);
 
         // Turn ship to face towards the target body while orbiting and apply Z/C roll
         let look_dir = (destination_pos - flight_state.world_pos).normalize_or_zero();
         if look_dir != Vec3::ZERO {
-            let base_rot = rotation_looking_to(look_dir);
+            let current_forward = ship_transform.forward().as_vec3();
+            let rot_diff = Quat::from_rotation_arc(current_forward, look_dir);
+            let base_rot = rot_diff * ship_transform.rotation;
             let roll_rot = Quat::from_rotation_z(flight_state.orbit_roll);
             let target_rot = base_rot * roll_rot;
             let rot_decay = 1.0 - (-5.0 * dt).exp();
@@ -939,7 +928,7 @@ pub fn autopilot_flight_system(
     let target_dir = to_target.normalize_or_zero();
 
     let min_cruise_speed = 12_000.0;
-    let decel_start_dist = (arrival_dist * 4.5).clamp(15_000.0, 500_000.0);
+    let decel_start_dist = (arrival_dist * 4.5).clamp(15_000.0, 15_000_000.0);
 
     // Auto-engage warp mode when planet destination is far away
     if distance > decel_start_dist + 5_000.0 && distance > 60_000.0 {
@@ -1540,5 +1529,43 @@ mod tests {
         let q2 = rotation_looking_to(dir2);
         let f2 = q2 * Vec3::NEG_Z;
         assert!((f2 - dir2).length() < 1e-4);
+    }
+
+    #[test]
+    fn test_orbit_boundary_increased_clearance() {
+        let earth_radius = 6371.0;
+        let earth_boundary = compute_orbit_boundary(earth_radius);
+        assert!(
+            earth_boundary > 2.0 * earth_radius,
+            "Earth orbit boundary should be at least 2.0x Earth radius (found {earth_boundary})"
+        );
+
+        let sun_radius = 696340.0;
+        let sun_boundary = compute_orbit_boundary(sun_radius);
+        assert!(
+            sun_boundary > 3.0 * sun_radius,
+            "Sun orbit boundary should be at least 3.0x Sun radius (found {sun_boundary})"
+        );
+    }
+
+    #[test]
+    fn test_sun_orbit_entry_distance_and_gimbal_lock_free_rotation() {
+        let sun_radius = 696340.0;
+        let sun_boundary = compute_orbit_boundary(sun_radius);
+        assert!(sun_boundary >= 2_000_000.0, "Sun orbit boundary should be >= 2,000,000 km to prevent visual crowding");
+
+        let decel_start_dist = (sun_boundary * 4.5).clamp(15_000.0, 15_000_000.0);
+        assert!(decel_start_dist > sun_boundary, "Deceleration start distance must be strictly greater than arrival distance for Sun");
+
+        // Verify vertical directions produce stable quaternions without gimbal lock singularities
+        let up_dir = Vec3::Y;
+        let q_up = rotation_looking_to(up_dir);
+        let f_up = q_up * Vec3::NEG_Z;
+        assert!((f_up - up_dir).length() < 1e-4);
+
+        let down_dir = Vec3::NEG_Y;
+        let q_down = rotation_looking_to(down_dir);
+        let f_down = q_down * Vec3::NEG_Z;
+        assert!((f_down - down_dir).length() < 1e-4);
     }
 }

@@ -50,6 +50,9 @@ pub struct AutoPilotState {
     pub leaving_orbit_in_progress: bool,    // Leaving orbit transition flag
     pub orbit_speed_multiplier: f32,        // Controlled by W/S in orbit mode
     pub entering_orbit_timer: f32,          // Timer for center "Entering Orbit Mode" popup label
+    pub orbit_yaw: f32,                     // Spherical orbit yaw angle (rad)
+    pub orbit_pitch: f32,                   // Spherical orbit pitch angle (rad), clamped to [-1.54, 1.54]
+    pub orbit_initialized: bool,            // Whether spherical angles have been initialized for current orbit
 }
 
 
