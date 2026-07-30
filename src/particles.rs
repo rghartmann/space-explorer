@@ -1,7 +1,20 @@
 use bevy::prelude::*;
 
 use crate::components::{EmitterType, Ship, ThrusterEmitter, ThrusterLight, ThrusterParticle};
-use crate::resources::{AutoPilotState, FlightState};
+use crate::resources::{AppState, AutoPilotState, FlightState};
+
+pub struct ParticlePlugin;
+
+impl Plugin for ParticlePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(OnEnter(AppState::InGame), setup_particle_assets)
+            .add_systems(
+                Update,
+                (thruster_particle_system, update_thruster_particles_system)
+                    .run_if(in_state(AppState::InGame)),
+            );
+    }
+}
 
 struct PseudoRng(u32);
 

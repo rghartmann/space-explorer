@@ -3,12 +3,35 @@ use bevy::ecs::message::MessageReader;
 use bevy::prelude::*;
 
 use crate::components::{Asteroid, Moon, PilotCamera, Planet, Ship, Sun};
-use crate::resources::{AutoPilotState, FlightState};
+use crate::resources::{AppState, AutoPilotState, FlightState};
 
-#[allow(dead_code)]
 pub const SPEED_OF_LIGHT: f32 = 299_792.458; // Speed of light in km/s (1.0c)
 pub const STANDARD_MAX_SPEED: f32 = 600_000.0; // 600,000 km/s (~2.0c impulse speed cap)
 pub const MAX_SPEED_CAP: f32 = 15_000_000.0;  // 15,000,000 km/s (~50.0c FTL warp boost cap)
+
+pub struct FlightPlugin;
+
+impl Plugin for FlightPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            (
+                (
+                    (orbit_planets_system, orbit_moons_system, orbit_asteroids_system),
+                    (autopilot_input_system, stop_engine_input_system),
+                    autopilot_pathfinding_system,
+                    autopilot_flight_system,
+                    ship_flight_system,
+                    celestial_collision_system,
+                    pilot_freelook_system,
+                )
+                    .chain(),
+                hide_cursor_system,
+            )
+                .run_if(in_state(AppState::InGame)),
+        );
+    }
+}
 
 pub fn compute_orbit_boundary(radius: f32) -> f32 {
     if radius <= 1000.0 {

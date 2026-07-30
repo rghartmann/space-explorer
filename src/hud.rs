@@ -1,10 +1,29 @@
 use bevy::ecs::message::MessageWriter;
 use bevy::prelude::*;
+use bevy::transform::TransformSystems;
 
 use crate::components::{
     AutoPilotHudText, CelestialDestinationType, CelestialLabel, EnteringOrbitLabel, Moon, OrbitModeBanner, OrbitModeInfoText, PilotCamera, Planet, Sun,
 };
-use crate::resources::{AutoPilotState, FlightState};
+use crate::resources::{AppState, AutoPilotState, FlightState};
+
+pub struct HudPlugin;
+
+impl Plugin for HudPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            (update_hud_system, exit_on_esc)
+                .run_if(in_state(AppState::InGame).or_else(in_state(AppState::Loading))),
+        )
+        .add_systems(
+            PostUpdate,
+            update_celestial_labels_system
+                .after(TransformSystems::Propagate)
+                .run_if(in_state(AppState::InGame)),
+        );
+    }
+}
 
 pub fn format_dual_space_distance(dist_km: f32) -> String {
     let au = dist_km / 149_597_870.7;
@@ -39,6 +58,8 @@ pub fn exit_on_esc(
     }
 }
 
+use crate::flight::SPEED_OF_LIGHT;
+
 pub fn update_hud_system(
     autopilot: Res<AutoPilotState>,
     flight_state: Res<FlightState>,
@@ -49,7 +70,7 @@ pub fn update_hud_system(
     mut entering_orbit_query: Query<&mut Visibility, (With<EnteringOrbitLabel>, Without<OrbitModeBanner>, Without<AutoPilotHudText>)>,
 ) {
     let speed = flight_state.velocity.length();
-    let speed_of_light = 299_792.458;
+    let speed_of_light = SPEED_OF_LIGHT;
 
     let speed_str = if flight_state.boost_mode {
         format!("{:.0} km/s ({:.2}x c - FTL WARP BOOST ACTIVE)", speed, speed / speed_of_light)

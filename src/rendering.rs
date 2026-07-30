@@ -85,6 +85,62 @@ type SkyboxRenderQueryFilter = (
     Without<PlanetAreaLight>,
 );
 
+use bevy::transform::TransformSystems;
+use crate::resources::AppState;
+
+pub struct RenderingPlugin;
+
+impl Plugin for RenderingPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            animate_sun_surface_system.run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(
+            PostUpdate,
+            (
+                logarithmic_distance_render_system.before(TransformSystems::Propagate),
+                update_directional_sunlight_system.before(TransformSystems::Propagate),
+                update_planet_area_lights_system.before(TransformSystems::Propagate),
+            )
+                .run_if(in_state(AppState::InGame)),
+        );
+    }
+}
+
+fn compute_logarithmic_transform(
+    world_pos: Vec3,
+    cam_pos: Vec3,
+    radius: f32,
+    min_scale_factor: f32,
+) -> (Vec3, Vec3, Visibility) {
+    let vec_to = world_pos - cam_pos;
+    let d_real = vec_to.length();
+
+    if d_real < 0.1 {
+        return (Vec3::ZERO, Vec3::ONE, Visibility::Inherited);
+    }
+
+    let dir = vec_to / d_real;
+    let k = 0.0000003;
+    let scale_const = 30000.0;
+    let transition_dist = 100000.0;
+
+    let blend = (d_real / transition_dist).clamp(0.0, 1.0);
+    let blend_smooth = blend * blend * (3.0 - 2.0 * blend);
+
+    let d_log = scale_const * (1.0 + k * d_real).ln();
+    let d_vis = d_real * (1.0 - blend_smooth) + d_log * blend_smooth;
+
+    let scale_log = (d_vis / d_real).clamp(0.001, 1.0);
+    let min_scale = (min_scale_factor * d_vis) / radius.max(0.1);
+    let final_scale_log = scale_log.max(min_scale);
+
+    let final_scale = 1.0 * (1.0 - blend_smooth) + final_scale_log * blend_smooth;
+
+    (dir * d_vis, Vec3::splat(final_scale), Visibility::Inherited)
+}
+
 pub fn logarithmic_distance_render_system(
     flight_state: Res<FlightState>,
     ship_query: Query<&Transform, With<Ship>>,
@@ -102,155 +158,54 @@ pub fn logarithmic_distance_render_system(
 
     let cam_pos = flight_state.world_pos + ship_transform.rotation * cam_transform.translation;
 
-    let k = 0.0000003;
-    let scale_const = 30000.0;
-    let transition_dist = 100000.0;
-
     // Render Sun
     for (sun, mut transform, mut vis) in &mut sun_query {
-        let sun_world_pos = Vec3::ZERO;
-        let vec_to = sun_world_pos - cam_pos;
-        let d_real = vec_to.length();
-
-        if d_real < 0.1 {
-            transform.translation = Vec3::ZERO;
-            transform.scale = Vec3::ONE;
-            *vis = Visibility::Inherited;
-            continue;
-        }
-
-        let dir = vec_to / d_real;
-        *vis = Visibility::Inherited;
-
-        let blend = (d_real / transition_dist).clamp(0.0, 1.0);
-        let blend_smooth = blend * blend * (3.0 - 2.0 * blend);
-
-        let d_log = scale_const * (1.0 + k * d_real).ln();
-        let d_vis = d_real * (1.0 - blend_smooth) + d_log * blend_smooth;
-
-        transform.translation = dir * d_vis;
-
-        let scale_log = (d_vis / d_real).clamp(0.001, 1.0);
-        let min_scale = (0.025 * d_vis) / sun.radius;
-        let final_scale_log = scale_log.max(min_scale);
-
-        let final_scale = 1.0 * (1.0 - blend_smooth) + final_scale_log * blend_smooth;
-        transform.scale = Vec3::splat(final_scale);
+        let (pos, scale, v) = compute_logarithmic_transform(Vec3::ZERO, cam_pos, sun.radius, 0.025);
+        transform.translation = pos;
+        transform.scale = scale;
+        *vis = v;
     }
 
     // Render Planets
     for (planet, mut transform, mut vis) in &mut planet_query {
-        let vec_to = planet.world_pos - cam_pos;
-        let d_real = vec_to.length();
-
-        if d_real < 0.1 {
-            transform.translation = Vec3::ZERO;
-            transform.scale = Vec3::ONE;
-            *vis = Visibility::Inherited;
-            continue;
-        }
-
-        let dir = vec_to / d_real;
-        *vis = Visibility::Inherited;
-
-        // Smooth transition between 1:1 physical scale (close range) and logarithmic scale (deep space)
-        let blend = (d_real / transition_dist).clamp(0.0, 1.0);
-        let blend_smooth = blend * blend * (3.0 - 2.0 * blend);
-
-        let d_log = scale_const * (1.0 + k * d_real).ln();
-        let d_vis = d_real * (1.0 - blend_smooth) + d_log * blend_smooth;
-
-        transform.translation = dir * d_vis;
-
-        let scale_log = (d_vis / d_real).clamp(0.001, 1.0);
-        let min_scale = (0.015 * d_vis) / planet.radius;
-        let final_scale_log = scale_log.max(min_scale);
-
-        let final_scale = 1.0 * (1.0 - blend_smooth) + final_scale_log * blend_smooth;
-        transform.scale = Vec3::splat(final_scale);
+        let (pos, scale, v) = compute_logarithmic_transform(planet.world_pos, cam_pos, planet.radius, 0.015);
+        transform.translation = pos;
+        transform.scale = scale;
+        *vis = v;
     }
 
     // Render Moons
     for (moon, mut transform, mut vis) in &mut moon_query {
-        let vec_to = moon.world_pos - cam_pos;
-        let d_real = vec_to.length();
-
-        if d_real < 0.1 {
-            transform.translation = Vec3::ZERO;
-            transform.scale = Vec3::ONE;
-            *vis = Visibility::Inherited;
-            continue;
-        }
-
-        let dir = vec_to / d_real;
-        *vis = Visibility::Inherited;
-
-        let blend = (d_real / transition_dist).clamp(0.0, 1.0);
-        let blend_smooth = blend * blend * (3.0 - 2.0 * blend);
-
-        let d_log = scale_const * (1.0 + k * d_real).ln();
-        let d_vis = d_real * (1.0 - blend_smooth) + d_log * blend_smooth;
-
-        transform.translation = dir * d_vis;
-
-        let scale_log = (d_vis / d_real).clamp(0.001, 1.0);
-        let min_scale = (0.012 * d_vis) / moon.radius;
-        let final_scale_log = scale_log.max(min_scale);
-
-        let final_scale = 1.0 * (1.0 - blend_smooth) + final_scale_log * blend_smooth;
-        transform.scale = Vec3::splat(final_scale);
+        let (pos, scale, v) = compute_logarithmic_transform(moon.world_pos, cam_pos, moon.radius, 0.012);
+        transform.translation = pos;
+        transform.scale = scale;
+        *vis = v;
     }
 
     // Render Asteroids
     for (asteroid, mut transform, mut vis) in &mut asteroid_query {
-        let vec_to = asteroid.world_pos - cam_pos;
-        let d_real = vec_to.length();
-
+        let d_real = asteroid.world_pos.distance(cam_pos);
         if d_real > 150_000.0 || d_real < 1.2 {
             *vis = Visibility::Hidden;
             continue;
         }
-
-        let dir = vec_to / d_real.max(0.1);
-        *vis = Visibility::Inherited;
-
-        let blend = (d_real / transition_dist).clamp(0.0, 1.0);
-        let blend_smooth = blend * blend * (3.0 - 2.0 * blend);
-
-        let d_log = scale_const * (1.0 + k * d_real).ln();
-        let d_vis = d_real * (1.0 - blend_smooth) + d_log * blend_smooth;
-
-        transform.translation = dir * d_vis;
-
-        let scale_log = (d_vis / d_real).clamp(0.001, 1.0);
-        let min_scale = (0.008 * d_vis) / asteroid.radius.max(0.5);
-        let final_scale_log = scale_log.max(min_scale);
-
-        let final_scale = 1.0 * (1.0 - blend_smooth) + final_scale_log * blend_smooth;
-        transform.scale = Vec3::splat(final_scale);
+        let (pos, scale, v) = compute_logarithmic_transform(asteroid.world_pos, cam_pos, asteroid.radius.max(0.5), 0.008);
+        transform.translation = pos;
+        transform.scale = scale;
+        *vis = v;
     }
 
     // Render Space Dust Clouds
     for (dust, mut transform, mut vis) in &mut dust_query {
-        let vec_to = dust.world_pos - cam_pos;
-        let d_real = vec_to.length();
-
+        let d_real = dust.world_pos.distance(cam_pos);
         if d_real > 300_000.0 || d_real < 1.2 {
             *vis = Visibility::Hidden;
             continue;
         }
-
-        let dir = vec_to / d_real.max(0.1);
-        *vis = Visibility::Inherited;
-
-        let blend = (d_real / transition_dist).clamp(0.0, 1.0);
-        let blend_smooth = blend * blend * (3.0 - 2.0 * blend);
-
-        let d_log = scale_const * (1.0 + k * d_real).ln();
-        let d_vis = d_real * (1.0 - blend_smooth) + d_log * blend_smooth;
-
-        transform.translation = dir * d_vis;
+        let (pos, _, v) = compute_logarithmic_transform(dust.world_pos, cam_pos, 1.0, 0.001);
+        transform.translation = pos;
         transform.scale = Vec3::splat(dust.size_scale);
+        *vis = v;
     }
 
     // Render SkyboxSphere (Fixed 360-degree Space Spheremap around camera)
@@ -329,7 +284,7 @@ pub fn animate_sun_surface_system(
 
     for (_sun, mut anim, mut transform, mat_handle) in &mut sun_query {
         // Slow natural spherical rotation of the Sun along Y-axis
-        transform.rotate_y(0.015 * delta_secs);
+        transform.rotate_y(0.005 * delta_secs);
 
         anim.frame_timer.tick(delta);
         anim.pulse_timer += delta_secs;
@@ -343,7 +298,7 @@ pub fn animate_sun_surface_system(
             }
 
             // Gentle solar flare emissive pulsation
-            let pulse = (anim.pulse_timer * 1.2).sin() * 2.2;
+            let pulse = (anim.pulse_timer * 0.5).sin() * 1.5;
             mat.emissive = LinearRgba::new(35.0 + pulse, 25.0 + pulse * 0.7, 6.0, 1.0);
         }
     }

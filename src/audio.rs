@@ -4,7 +4,18 @@ use std::fs;
 use std::path::Path;
 
 use crate::components::EngineSound;
-use crate::resources::FlightState;
+use crate::resources::{AppState, FlightState};
+
+pub struct AudioPlugin;
+
+impl Plugin for AudioPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            engine_sound_system.run_if(in_state(AppState::InGame)),
+        );
+    }
+}
 
 pub fn generate_engine_hum_wav() -> Vec<u8> {
     let sample_rate = 44100;

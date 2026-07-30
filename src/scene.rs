@@ -344,7 +344,7 @@ pub fn setup_scene(
         SunAnimation {
             frame_handles: sun_anim_handles,
             current_frame: 0,
-            frame_timer: Timer::from_seconds(0.10, TimerMode::Repeating),
+            frame_timer: Timer::from_seconds(0.35, TimerMode::Repeating),
             pulse_timer: 0.0,
         },
         Mesh3d(sun_mesh),
@@ -1173,19 +1173,20 @@ pub fn create_uv_sphere(radius: f32, sectors: u32, stacks: u32) -> Mesh {
         .kind(bevy::render::mesh::SphereKind::Uv { sectors, stacks })
         .build();
 
-    let rotation = Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
-
     if let Some(VertexAttributeValues::Float32x3(positions)) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
         for p in positions.iter_mut() {
-            let rotated = rotation * Vec3::from_slice(p);
-            *p = rotated.to_array();
+            // Swap Y and Z so the UV sphere polar axis (+Z in Bevy UvSphere) aligns with +Y (Up)
+            let tmp = p[1];
+            p[1] = p[2];
+            p[2] = tmp;
         }
     }
 
     if let Some(VertexAttributeValues::Float32x3(normals)) = mesh.attribute_mut(Mesh::ATTRIBUTE_NORMAL) {
         for n in normals.iter_mut() {
-            let rotated = rotation * Vec3::from_slice(n);
-            *n = rotated.to_array();
+            let tmp = n[1];
+            n[1] = n[2];
+            n[2] = tmp;
         }
     }
 
@@ -1337,7 +1338,6 @@ pub fn setup_loading_screen(
         LoadingScreenUI,
     ));
 
-
     commands
         .spawn((
             Node {
@@ -1407,71 +1407,19 @@ pub fn check_loading_status(
         }
         next_state.set(AppState::InGame);
     }
-
-
 }
 
-#[allow(dead_code)]
-fn create_dotted_circle_mesh(num_dots: usize, circle_radius: f32, dot_radius: f32) -> Mesh {
-    use bevy::asset::RenderAssetUsages;
-    use bevy::mesh::PrimitiveTopology;
-    use std::f32::consts::PI;
+pub struct ScenePlugin;
 
-    let mut positions = Vec::new();
-    let mut normals = Vec::new();
-    let mut uvs = Vec::new();
-    let mut indices = Vec::new();
-
-    let rings = 4;
-    let segments = 6;
-
-    for i in 0..num_dots {
-        let angle = (i as f32 / num_dots as f32) * 2.0 * PI;
-        let center = Vec3::new(circle_radius * angle.cos(), circle_radius * angle.sin(), 0.0);
-
-        let base_index = positions.len() as u32;
-
-        for r in 0..=rings {
-            let v = (r as f32 / rings as f32) * PI;
-            for s in 0..=segments {
-                let u = (s as f32 / segments as f32) * 2.0 * PI;
-
-                let nx = v.sin() * u.cos();
-                let ny = v.sin() * u.sin();
-                let nz = v.cos();
-                let normal = Vec3::new(nx, ny, nz);
-
-                let pos = center + normal * dot_radius;
-
-                positions.push([pos.x, pos.y, pos.z]);
-                normals.push([normal.x, normal.y, normal.z]);
-                uvs.push([u / (2.0 * PI), v / PI]);
-            }
-        }
-
-        let stride = segments + 1;
-        for r in 0..rings {
-            for s in 0..segments {
-                let first = base_index + (r * stride + s) as u32;
-                let second = first + stride as u32;
-
-                indices.push(first);
-                indices.push(second);
-                indices.push(first + 1);
-
-                indices.push(second);
-                indices.push(second + 1);
-                indices.push(first + 1);
-            }
-        }
+impl Plugin for ScenePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(OnEnter(AppState::Loading), setup_loading_screen)
+            .add_systems(
+                Update,
+                check_loading_status.run_if(in_state(AppState::Loading)),
+            )
+            .add_systems(OnEnter(AppState::InGame), setup_scene);
     }
-
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    mesh.insert_indices(bevy::mesh::Indices::U32(indices));
-    mesh
 }
 
 #[cfg(test)]
@@ -1481,7 +1429,8 @@ mod tests {
 
     #[test]
     fn test_sphere_uvs() {
-        let mesh = create_uv_sphere(1.0, 4, 4);
+        let radius = 1.0;
+        let mesh = create_uv_sphere(radius, 16, 8);
 
         let positions = match mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap() {
             VertexAttributeValues::Float32x3(p) => p,
@@ -1491,9 +1440,24 @@ mod tests {
             VertexAttributeValues::Float32x2(u) => u,
             _ => panic!(),
         };
+
+        let mut found_north_pole = false;
+        let mut found_south_pole = false;
+
         for (p, uv) in positions.iter().zip(uvs.iter()) {
-            println!("uv: {:?}, pos: [{:.2}, {:.2}, {:.2}]", uv, p[0], p[1], p[2]);
+            if (uv[1] - 0.0).abs() < 1e-4 {
+                // North Pole (v=0.0) must map to +Y position [0, +radius, 0]
+                assert!((p[1] - radius).abs() < 1e-4, "North pole v=0.0 must map to +Y position [0, {}, 0], got {:?}", radius, p);
+                found_north_pole = true;
+            } else if (uv[1] - 1.0).abs() < 1e-4 {
+                // South Pole (v=1.0) must map to -Y position [0, -radius, 0]
+                assert!((p[1] + radius).abs() < 1e-4, "South pole v=1.0 must map to -Y position [0, -{}, 0], got {:?}", radius, p);
+                found_south_pole = true;
+            }
         }
+
+        assert!(found_north_pole, "Sphere mesh must contain North pole vertices (v=0.0)");
+        assert!(found_south_pole, "Sphere mesh must contain South pole vertices (v=1.0)");
     }
 
     #[test]
