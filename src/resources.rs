@@ -12,6 +12,15 @@ pub struct LoadingAssets {
     pub handles: Vec<UntypedHandle>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum FlightControlMode {
+    #[default]
+    Manual,
+    AutopilotTransit,
+    OrbitPositioning,
+    OrbitLocked,
+}
+
 #[derive(Resource, Default)]
 pub struct FlightState {
     pub world_pos: Vec3,       // Real physical position in solar system space
@@ -40,7 +49,47 @@ pub struct AutoPilotState {
     pub entering_orbit_timer: f32,          // Timer for center "Entering Orbit Mode" popup label
     pub orbit_yaw: f32,                     // Spherical orbit yaw angle (rad)
     pub orbit_pitch: f32,                   // Spherical orbit pitch angle (rad), clamped to [-1.54, 1.54]
+    pub orbit_distance: f32,                // Current orbit radius distance from celestial body
     pub orbit_initialized: bool,            // Whether spherical angles have been initialized for current orbit
 }
+
+impl AutoPilotState {
+    pub fn mode(&self) -> FlightControlMode {
+        if self.arrived || self.engine_stopped {
+            FlightControlMode::OrbitLocked
+        } else if self.positioning_in_progress {
+            FlightControlMode::OrbitPositioning
+        } else if self.active {
+            FlightControlMode::AutopilotTransit
+        } else {
+            FlightControlMode::Manual
+        }
+    }
+
+    pub fn is_in_orbit(&self) -> bool {
+        self.arrived || self.engine_stopped || self.positioning_in_progress
+    }
+
+    pub fn is_engaged(&self) -> bool {
+        self.active || self.arrived || self.engine_stopped || self.positioning_in_progress || self.leaving_orbit_in_progress
+    }
+
+    pub fn reset_all(&mut self) {
+        self.active = false;
+        self.arrived = false;
+        self.engine_stopped = false;
+        self.positioning_in_progress = false;
+        self.positioning_timer = 0.0;
+        self.leaving_orbit_in_progress = false;
+        self.leaving_orbit_timer = 0.0;
+        self.current_waypoint = None;
+        self.destination_index = None;
+        self.prev_destination_pos = None;
+        self.orbit_initialized = false;
+        self.orbit_speed_multiplier = 1.0;
+        self.orbit_distance = 0.0;
+    }
+}
+
 
 

@@ -53,6 +53,57 @@ pub fn rotation_looking_to(dir: Vec3) -> Quat {
     Quat::from_rotation_arc(Vec3::NEG_Z, dir)
 }
 
+pub fn get_celestial_target_full_info(
+    destination_idx: usize,
+    destination_name: &str,
+    sun_query: &Query<&Sun>,
+    planet_query: &Query<&Planet>,
+    moon_query: &Query<&Moon>,
+) -> Option<(Vec3, f32, Vec3, Option<usize>)> {
+    if destination_idx == 0 {
+        let sun = sun_query.iter().next()?;
+        Some((Vec3::ZERO, sun.radius, Vec3::ZERO, None))
+    } else if destination_idx == 100 {
+        for moon in moon_query {
+            if moon.name == destination_name {
+                let mut parent_vel = Vec3::ZERO;
+                for planet in planet_query {
+                    if planet.index == moon.parent_index {
+                        let p_speed = planet.orbit_speed * 0.025;
+                        parent_vel = Vec3::new(
+                            -planet.orbit_radius * p_speed * planet.orbit_angle.sin(),
+                            0.0,
+                            planet.orbit_radius * p_speed * planet.orbit_angle.cos(),
+                        );
+                        break;
+                    }
+                }
+                let m_speed = moon.orbit_speed * 0.05;
+                let moon_rel_vel = Vec3::new(
+                    -moon.orbit_radius * m_speed * moon.orbit_angle.sin(),
+                    0.0,
+                    moon.orbit_radius * m_speed * moon.orbit_angle.cos(),
+                );
+                return Some((moon.world_pos, moon.radius, parent_vel + moon_rel_vel, Some(moon.parent_index)));
+            }
+        }
+        None
+    } else {
+        for planet in planet_query {
+            if planet.index == destination_idx {
+                let p_speed = planet.orbit_speed * 0.025;
+                let vel = Vec3::new(
+                    -planet.orbit_radius * p_speed * planet.orbit_angle.sin(),
+                    0.0,
+                    planet.orbit_radius * p_speed * planet.orbit_angle.cos(),
+                );
+                return Some((planet.world_pos, planet.radius, vel, None));
+            }
+        }
+        None
+    }
+}
+
 pub fn get_celestial_target_info(
     destination_idx: usize,
     destination_name: &str,
@@ -60,24 +111,14 @@ pub fn get_celestial_target_info(
     planet_query: &Query<&Planet>,
     moon_query: &Query<&Moon>,
 ) -> Option<(Vec3, f32)> {
-    if destination_idx == 0 {
-        let sun = sun_query.iter().next()?;
-        Some((Vec3::ZERO, sun.radius))
-    } else if destination_idx == 100 {
-        for moon in moon_query {
-            if moon.name == destination_name {
-                return Some((moon.world_pos, moon.radius));
-            }
-        }
-        None
-    } else {
-        for planet in planet_query {
-            if planet.index == destination_idx {
-                return Some((planet.world_pos, planet.radius));
-            }
-        }
-        None
-    }
+    let (pos, radius, _vel, _parent) = get_celestial_target_full_info(
+        destination_idx,
+        destination_name,
+        sun_query,
+        planet_query,
+        moon_query,
+    )?;
+    Some((pos, radius))
 }
 
 pub fn hide_cursor_system(
@@ -254,26 +295,12 @@ pub fn ship_flight_system(
     flight_state.previous_pos = flight_state.world_pos;
 
     // Space Key: Cancel Auto-Pilot & Restore Manual Controls if active, else Toggle FTL Boost Mode
-    let is_autopilot_engaged = autopilot.active
-        || autopilot.arrived
-        || autopilot.engine_stopped
-        || autopilot.positioning_in_progress
-        || autopilot.leaving_orbit_in_progress;
+    let is_autopilot_engaged = autopilot.is_engaged();
 
     if keyboard.just_pressed(KeyCode::Space) {
         if is_autopilot_engaged {
             // Cancel auto-pilot immediately and restore manual controls
-            autopilot.active = false;
-            autopilot.arrived = false;
-            autopilot.engine_stopped = false;
-            autopilot.positioning_in_progress = false;
-            autopilot.positioning_timer = 0.0;
-            autopilot.leaving_orbit_in_progress = false;
-            autopilot.leaving_orbit_timer = 0.0;
-            autopilot.current_waypoint = None;
-            autopilot.destination_index = None;
-            autopilot.prev_destination_pos = None;
-            autopilot.orbit_initialized = false;
+            autopilot.reset_all();
             flight_state.boost_mode = false;
             flight_state.rapid_decel = false;
             flight_state.angular_velocity = Vec3::ZERO;
@@ -349,8 +376,15 @@ pub fn ship_flight_system(
         }
     }
 
-    let current_vel = flight_state.velocity;
-    flight_state.world_pos += current_vel * dt;
+    let is_in_orbit_state = autopilot.arrived
+        || autopilot.engine_stopped
+        || autopilot.positioning_in_progress
+        || autopilot.leaving_orbit_in_progress;
+
+    if !is_in_orbit_state {
+        let current_vel = flight_state.velocity;
+        flight_state.world_pos += current_vel * dt;
+    }
     ship_transform.translation = Vec3::ZERO;
 }
 
@@ -380,7 +414,7 @@ pub fn autopilot_input_system(
         (KeyCode::KeyM, 100, "Moon"),
     ];
 
-    let is_in_orbit = autopilot.arrived || autopilot.engine_stopped;
+    let is_in_orbit = autopilot.arrived || autopilot.engine_stopped || autopilot.positioning_in_progress;
     let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
 
     for (key, idx, name) in planet_keys {
@@ -490,7 +524,7 @@ pub fn autopilot_pathfinding_system(
 
     let Some(destination_idx) = autopilot.destination_index else { return; };
 
-    let (final_target_pos, _) = match get_celestial_target_info(
+    let (final_target_pos, _, _, parent_planet_idx) = match get_celestial_target_full_info(
         destination_idx,
         autopilot.destination_name,
         &sun_query,
@@ -545,7 +579,7 @@ pub fn autopilot_pathfinding_system(
     }
 
     for planet in &planet_query {
-        if destination_idx != planet.index {
+        if destination_idx != planet.index && Some(planet.index) != parent_planet_idx {
             let to_planet = planet.world_pos - start_pos;
             let proj = to_planet.dot(line_dir);
             if proj > 1000.0 && proj < dist - 1000.0 {
@@ -736,6 +770,17 @@ pub fn autopilot_flight_system(
         return;
     }
 
+    let destination_vel = if let Some(prev) = autopilot.prev_destination_pos {
+        let delta = destination_pos - prev;
+        if dt > 0.00001 && delta.length() < 500_000.0 {
+            delta / dt
+        } else {
+            Vec3::ZERO
+        }
+    } else {
+        Vec3::ZERO
+    };
+
     // Path-finding waypoint guidance
     let effective_target_pos = if let Some(waypoint) = autopilot.current_waypoint {
         let dist_to_wp = flight_state.world_pos.distance(waypoint);
@@ -755,14 +800,12 @@ pub fn autopilot_flight_system(
 
     let arrival_dist = compute_orbit_boundary(destination_radius);
 
-    let prev_pos = autopilot.prev_destination_pos.unwrap_or(destination_pos);
-
     // Handle positioning transition delay when entering orbit
     if autopilot.positioning_in_progress {
         autopilot.positioning_timer -= dt;
 
-        // Immediately arrest velocity and clear boost/decel states during orbit insertion positioning
-        flight_state.velocity = Vec3::ZERO;
+        // Arrest relative velocity and lock world velocity to destination body velocity
+        flight_state.velocity = destination_vel;
         flight_state.boost_mode = false;
         flight_state.rapid_decel = false;
 
@@ -778,17 +821,20 @@ pub fn autopilot_flight_system(
             autopilot.arrived = true;
             autopilot.engine_stopped = true;
         }
+        autopilot.prev_destination_pos = Some(destination_pos);
         return;
     }
 
-    let swept_hits_boundary = if dt > 0.0001 && flight_state.velocity != Vec3::ZERO {
-        let current_pos = flight_state.world_pos;
-        let move_vec = flight_state.velocity * dt;
-        let seg_len_sq = move_vec.length_squared();
+    let swept_hits_boundary = if dt > 0.0001 {
+        let prev_dest = autopilot.prev_destination_pos.unwrap_or(destination_pos);
+        let rel_old = flight_state.previous_pos - prev_dest;
+        let rel_new = flight_state.world_pos - destination_pos;
+        let rel_seg = rel_new - rel_old;
+        let seg_len_sq = rel_seg.length_squared();
         if seg_len_sq > 0.001 {
-            let t = ((destination_pos - current_pos).dot(move_vec) / seg_len_sq).clamp(0.0, 1.0);
-            let closest_pt = current_pos + move_vec * t;
-            closest_pt.distance(destination_pos) <= arrival_dist
+            let t = (-rel_old.dot(rel_seg) / seg_len_sq).clamp(0.0, 1.0);
+            let closest_pt = rel_old + rel_seg * t;
+            closest_pt.length() <= arrival_dist
         } else {
             false
         }
@@ -796,7 +842,9 @@ pub fn autopilot_flight_system(
         false
     };
 
-    if (real_distance_to_dest <= arrival_dist || swept_hits_boundary) && !autopilot.arrived && !autopilot.engine_stopped {
+    let trigger_dist = (arrival_dist + 1024.0).max(arrival_dist * 1.15);
+
+    if (real_distance_to_dest <= trigger_dist || swept_hits_boundary) && !autopilot.arrived && !autopilot.engine_stopped {
         flight_state.velocity = Vec3::ZERO;
         autopilot.positioning_in_progress = true;
         autopilot.positioning_timer = 1.5;
@@ -806,6 +854,7 @@ pub fn autopilot_flight_system(
         let offset = flight_state.world_pos - destination_pos;
         let safe_dir = if offset.length() > 0.001 { offset.normalize() } else { Vec3::Z };
         flight_state.world_pos = destination_pos + safe_dir * arrival_dist;
+        autopilot.prev_destination_pos = Some(destination_pos);
         return;
     }
 
@@ -843,9 +892,10 @@ pub fn autopilot_flight_system(
         let current_offset = flight_state.world_pos - destination_pos;
         let current_dist = current_offset.length();
 
-        if autopilot.orbit_pitch == 0.0 && autopilot.orbit_yaw == 0.0 && current_dist > 0.1 {
+        if (!autopilot.orbit_initialized || (autopilot.orbit_pitch == 0.0 && autopilot.orbit_yaw == 0.0)) && current_dist > 0.1 {
             autopilot.orbit_pitch = (current_offset.y / current_dist).clamp(-1.0, 1.0).asin();
             autopilot.orbit_yaw = current_offset.x.atan2(current_offset.z);
+            autopilot.orbit_initialized = true;
         }
 
         let orbit_speed = 0.35;
@@ -876,8 +926,13 @@ pub fn autopilot_flight_system(
 
         flight_state.world_pos = destination_pos + new_dir * new_dist;
 
-        let planet_vel = if dt > 0.00001 {
-            (destination_pos - prev_pos) / dt
+        let planet_vel = if let Some(prev) = autopilot.prev_destination_pos {
+            let delta = destination_pos - prev;
+            if dt > 0.00001 && delta.length() < 100_000.0 {
+                delta / dt
+            } else {
+                Vec3::ZERO
+            }
         } else {
             Vec3::ZERO
         };
@@ -914,22 +969,27 @@ pub fn autopilot_flight_system(
         (distance * 0.45).clamp(min_cruise_speed, MAX_SPEED_CAP)
     };
 
-    let min_approach_speed = 5_000.0;
-    let target_speed = if distance > decel_start_dist {
+    let target_rel_speed = if distance > decel_start_dist {
         max_cruise_speed
     } else {
-        let progress = ((distance - arrival_dist) / (decel_start_dist - arrival_dist)).clamp(0.0, 1.0);
-        let approach_curve = progress.powf(1.35); // Smooth non-linear braking curve down to min_approach_speed at orbit boundary
-        (max_cruise_speed * approach_curve).max(min_approach_speed)
+        (distance * 1.5).clamp(8_000.0, max_cruise_speed)
     };
 
-    let vel_decay = 1.0 - (-8.0 * dt).exp(); // Smooth, responsive velocity transition towards target
-    flight_state.velocity = flight_state.velocity.lerp(target_dir * target_speed, vel_decay);
-
-    // Hard speed cap during deceleration phase: velocity cannot exceed target_speed when decelerating
-    if distance <= decel_start_dist && flight_state.velocity.length() > target_speed {
-        flight_state.velocity = flight_state.velocity.normalize() * target_speed;
+    // High-precision relative offset update for outer solar system bodies (>1 Billion km)
+    if real_distance_to_dest < 100_000.0 && real_distance_to_dest > 0.001 {
+        let offset = flight_state.world_pos - destination_pos;
+        let safe_dir = offset.normalize_or_zero();
+        let new_rel_dist = (real_distance_to_dest - target_rel_speed * dt).max(arrival_dist);
+        flight_state.world_pos = destination_pos + safe_dir * new_rel_dist;
+        flight_state.velocity = destination_vel - safe_dir * target_rel_speed;
+        autopilot.prev_destination_pos = Some(destination_pos);
+        return;
     }
+
+    let target_vel = destination_vel + target_dir * target_rel_speed;
+
+    let vel_decay = 1.0 - (-8.0 * dt).exp(); // Smooth, responsive velocity transition towards target
+    flight_state.velocity = flight_state.velocity.lerp(target_vel, vel_decay);
 
     // Safety boundary: prevent autopilot trajectory from penetrating below arrival boundary
     let offset = flight_state.world_pos - destination_pos;
@@ -1005,14 +1065,26 @@ pub fn celestial_collision_system(
                     }
                 } else {
                     // Collision with an obstacle body aborts autopilot
-                    autopilot.active = false;
-                    autopilot.arrived = false;
-                    autopilot.prev_destination_pos = None;
+                    println!("COLLISION ABORT! body_pos={:?}, body_radius={}, dest_idx={:?}, dest_name={}", body_pos, body_radius, dest_idx, dest_name);
+                    autopilot.reset_all();
                 }
             }
             return true;
         }
         false
+    };
+
+    let parent_planet_idx = if dest_idx == Some(100) {
+        let mut p_idx = None;
+        for moon in &moon_query {
+            if moon.name == dest_name {
+                p_idx = Some(moon.parent_index);
+                break;
+            }
+        }
+        p_idx
+    } else {
+        None
     };
 
     for sun in &sun_query {
@@ -1023,7 +1095,7 @@ pub fn celestial_collision_system(
     }
 
     for planet in &planet_query {
-        let is_target = is_ap_active && dest_idx == Some(planet.index);
+        let is_target = is_ap_active && (dest_idx == Some(planet.index) || (dest_idx == Some(100) && Some(planet.index) == parent_planet_idx));
         if check_collision(planet.world_pos, planet.radius, is_target) {
             return;
         }
@@ -1878,4 +1950,436 @@ mod tests {
             "Position must remain pinned at arrival_dist without bouncing"
         );
     }
+
+    #[test]
+    fn test_orbit_mode_multi_frame_stability_with_full_schedule() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+
+        let earth_pos = Vec3::new(149_597_870.7, 0.0, 0.0);
+        let earth_radius = 6371.0;
+        let arrival_dist = compute_orbit_boundary(earth_radius);
+
+        let mut flight_state = FlightState::default();
+        flight_state.world_pos = earth_pos + Vec3::new(arrival_dist, 0.0, 0.0);
+        app.insert_resource(flight_state);
+
+        let mut autopilot = AutoPilotState::default();
+        autopilot.active = true;
+        autopilot.destination_index = Some(3);
+        autopilot.destination_name = "Earth";
+        autopilot.arrived = true;
+        autopilot.engine_stopped = true;
+        autopilot.prev_destination_pos = Some(earth_pos);
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn(Planet {
+            index: 3,
+            name: "Earth",
+            radius: earth_radius,
+            orbit_radius: 149_597_870.7,
+            orbit_speed: 0.15,
+            rotation_speed: 0.01,
+            orbit_angle: 0.0,
+            world_pos: earth_pos,
+        });
+
+        app.world_mut().spawn((Ship, Transform::default()));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems((autopilot_flight_system, ship_flight_system, celestial_collision_system).chain());
+
+        // Run simulation for 300 frames (5 seconds @ 60 FPS) in orbit mode
+        for _ in 0..300 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
+            schedule.run(app.world_mut());
+
+            let ship_pos = app.world().resource::<FlightState>().world_pos;
+            let current_ap_arrived = app.world().resource::<AutoPilotState>().arrived;
+            let current_ap_active = app.world().resource::<AutoPilotState>().active;
+
+            assert!(
+                current_ap_arrived,
+                "Autopilot arrived state should remain true throughout orbit mode"
+            );
+            assert!(
+                current_ap_active,
+                "Autopilot active state should remain true without automatically disengaging"
+            );
+
+            let current_earth_pos = app.world_mut().query::<&Planet>().single(app.world()).unwrap().world_pos;
+            let dist = ship_pos.distance(current_earth_pos);
+            assert!(
+                (dist - arrival_dist).abs() < 100.0,
+                "Distance to Earth in orbit mode should remain stable at arrival_dist ({arrival_dist}), found {dist}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_positioning_to_orbit_transition_no_velocity_spike() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+
+        let earth_pos = Vec3::new(149_597_870.7, 0.0, 0.0);
+        let earth_radius = 6371.0;
+        let arrival_dist = compute_orbit_boundary(earth_radius);
+
+        let mut flight_state = FlightState::default();
+        flight_state.world_pos = earth_pos + Vec3::new(arrival_dist, 0.0, 0.0);
+        app.insert_resource(flight_state);
+
+        let mut autopilot = AutoPilotState::default();
+        autopilot.active = true;
+        autopilot.destination_index = Some(3);
+        autopilot.destination_name = "Earth";
+        autopilot.positioning_in_progress = true;
+        autopilot.positioning_timer = 0.03;
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn(Planet {
+            index: 3,
+            name: "Earth",
+            radius: earth_radius,
+            orbit_radius: 149_597_870.7,
+            orbit_speed: 0.15,
+            rotation_speed: 0.01,
+            orbit_angle: 0.0,
+            world_pos: earth_pos,
+        });
+
+        app.world_mut().spawn((Ship, Transform::default()));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems((orbit_planets_system, autopilot_flight_system, ship_flight_system, celestial_collision_system).chain());
+
+        for _ in 0..5 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
+            schedule.run(app.world_mut());
+
+            let vel = app.world().resource::<FlightState>().velocity.length();
+            assert!(
+                vel < 50_000.0,
+                "Velocity during orbit entry transition must remain sane (found velocity = {vel} km/s)"
+            );
+        }
+    }
+
+    #[test]
+    fn test_flight_control_mode_enum_and_helpers() {
+        let mut ap = AutoPilotState::default();
+        assert_eq!(ap.mode(), crate::resources::FlightControlMode::Manual);
+        assert!(!ap.is_in_orbit());
+        assert!(!ap.is_engaged());
+
+        ap.active = true;
+        assert_eq!(ap.mode(), crate::resources::FlightControlMode::AutopilotTransit);
+        assert!(!ap.is_in_orbit());
+        assert!(ap.is_engaged());
+
+        ap.positioning_in_progress = true;
+        assert_eq!(ap.mode(), crate::resources::FlightControlMode::OrbitPositioning);
+        assert!(ap.is_in_orbit());
+        assert!(ap.is_engaged());
+
+        ap.positioning_in_progress = false;
+        ap.arrived = true;
+        ap.engine_stopped = true;
+        ap.reset_all();
+        assert_eq!(ap.mode(), crate::resources::FlightControlMode::Manual);
+        assert!(!ap.is_in_orbit());
+        assert!(!ap.is_engaged());
+    }
+
+    #[test]
+    fn test_debug_moon_autopilot_positioning() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+
+        let earth_pos = Vec3::new(149_597_870.7, 0.0, 0.0);
+        let moon_orbit_radius = 384400.0;
+        let moon_pos = earth_pos + Vec3::new(moon_orbit_radius, 0.0, 0.0);
+        let moon_radius = 1737.4;
+        let arrival_dist = compute_orbit_boundary(moon_radius);
+
+        let start_pos = moon_pos + Vec3::new(arrival_dist + 5000.0, 0.0, 0.0);
+
+        let mut flight_state = FlightState::default();
+        flight_state.world_pos = start_pos;
+        app.insert_resource(flight_state);
+
+        let mut autopilot = AutoPilotState::default();
+        autopilot.active = true;
+        autopilot.destination_index = Some(100);
+        autopilot.destination_name = "Moon";
+        autopilot.arrived = false;
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn(Planet {
+            index: 3,
+            name: "Earth",
+            radius: 6371.0,
+            orbit_radius: 149_597_870.7,
+            orbit_speed: 0.15,
+            rotation_speed: 0.01,
+            orbit_angle: 0.0,
+            world_pos: earth_pos,
+        });
+
+        app.world_mut().spawn(Moon {
+            name: "Moon",
+            parent_index: 3,
+            radius: moon_radius,
+            orbit_radius: moon_orbit_radius,
+            orbit_speed: 0.0547,
+            rotation_speed: 0.0547,
+            orbit_angle: 0.0,
+            world_pos: moon_pos,
+        });
+
+        app.world_mut().spawn((Ship, Transform::default()));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems((
+            orbit_planets_system,
+            orbit_moons_system,
+            autopilot_flight_system,
+            ship_flight_system,
+            celestial_collision_system,
+        ).chain());
+
+        for frame in 0..500 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
+            schedule.run(app.world_mut());
+
+            let ap = app.world().resource::<AutoPilotState>();
+            let fs = app.world().resource::<FlightState>();
+
+            if ap.positioning_in_progress {
+                println!("Frame {frame}: positioning_in_progress = true, timer = {}", ap.positioning_timer);
+            }
+
+            if !ap.active && !ap.arrived && !ap.positioning_in_progress && !ap.leaving_orbit_in_progress {
+                panic!("Autopilot disengaged unexpectedly at frame {frame}! pos = {:?}", fs.world_pos);
+            }
+
+            if ap.arrived {
+                println!("Successfully arrived at Moon at frame {frame}!");
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn test_all_destinations_sanity_check() {
+        let destinations = [
+            (0, "Sun"),
+            (1, "Mercury"),
+            (2, "Venus"),
+            (3, "Earth"),
+            (4, "Mars"),
+            (5, "Jupiter"),
+            (6, "Saturn"),
+            (7, "Uranus"),
+            (8, "Neptune"),
+            (9, "Pluto"),
+            (10, "Ceres"),
+            (11, "Haumea"),
+            (12, "Makemake"),
+            (13, "Eris"),
+            (100, "Moon"),
+            (100, "Io"),
+        ];
+
+        for (idx, name) in destinations {
+            let mut app = App::new();
+            app.add_plugins(bevy::input::InputPlugin);
+            app.add_plugins(bevy::time::TimePlugin);
+            app.init_resource::<ButtonInput<KeyCode>>();
+
+            // Spawn Sun
+            app.world_mut().spawn(Sun { radius: 696340.0 });
+
+            // Spawn Planets with distinct orbital angles
+            let planets_data = [
+                (1, "Mercury", 2439.7, 57_909_050.0, 0.2f32),
+                (2, "Venus", 6051.8, 108_208_000.0, 1.1f32),
+                (3, "Earth", 6371.0, 149_597_870.7, 2.4f32),
+                (4, "Mars", 3389.5, 227_939_200.0, 3.7f32),
+                (5, "Jupiter", 69911.0, 778_570_000.0, 0.8f32),
+                (6, "Saturn", 58232.0, 1_433_530_000.0, 4.5f32),
+                (7, "Uranus", 25362.0, 2_870_972_200.0, 1.9f32),
+                (8, "Neptune", 24622.0, 4_498_252_900.0, 5.2f32),
+                (9, "Pluto", 1188.3, 5_906_380_000.0, 3.1f32),
+                (10, "Ceres", 473.0, 413_700_000.0, 2.0f32),
+                (11, "Haumea", 816.0, 6_450_000_000.0, 4.0f32),
+                (12, "Makemake", 715.0, 6_850_000_000.0, 5.8f32),
+                (13, "Eris", 1163.0, 10_120_000_000.0, 1.3f32),
+            ];
+
+            for (p_idx, p_name, p_rad, p_orb, p_angle) in planets_data {
+                let p_x = p_orb * p_angle.cos();
+                let p_z = p_orb * p_angle.sin();
+                app.world_mut().spawn(Planet {
+                    index: p_idx,
+                    name: p_name,
+                    radius: p_rad,
+                    orbit_radius: p_orb,
+                    orbit_speed: 0.01,
+                    rotation_speed: 0.01,
+                    orbit_angle: p_angle,
+                    world_pos: Vec3::new(p_x, 0.0, p_z),
+                });
+            }
+
+            // Spawn Moons
+            let earth_pos = Vec3::new(149_597_870.7 * 0.5f32.cos(), 0.0, 149_597_870.7 * 0.5f32.sin());
+            app.world_mut().spawn(Moon {
+                name: "Moon",
+                parent_index: 3,
+                radius: 1737.4,
+                orbit_radius: 384400.0,
+                orbit_speed: 0.05,
+                rotation_speed: 0.05,
+                orbit_angle: 0.2,
+                world_pos: earth_pos + Vec3::new(384400.0 * 0.2f32.cos(), 0.0, 384400.0 * 0.2f32.sin()),
+            });
+
+            let jupiter_pos = Vec3::new(778_570_000.0 * 0.5f32.cos(), 0.0, 778_570_000.0 * 0.5f32.sin());
+            app.world_mut().spawn(Moon {
+                name: "Io",
+                parent_index: 5,
+                radius: 1821.6,
+                orbit_radius: 421700.0,
+                orbit_speed: 0.08,
+                rotation_speed: 0.08,
+                orbit_angle: 0.4,
+                world_pos: jupiter_pos + Vec3::new(421700.0 * 0.4f32.cos(), 0.0, 421700.0 * 0.4f32.sin()),
+            });
+
+            // Step orbital motion once so initial world_pos match planetary orbits
+            let mut init_schedule = Schedule::default();
+            init_schedule.add_systems((orbit_planets_system, orbit_moons_system));
+            init_schedule.run(app.world_mut());
+
+            // Determine target position AFTER orbital motion init
+            let mut target_pos = Vec3::ZERO;
+            let mut target_radius = 696340.0;
+            if idx == 0 {
+                if let Some(sun) = app.world_mut().query::<&Sun>().iter(app.world()).next() {
+                    target_pos = Vec3::ZERO;
+                    target_radius = sun.radius;
+                }
+            } else if idx == 100 {
+                for moon in app.world_mut().query::<&Moon>().iter(app.world()) {
+                    if moon.name == name {
+                        target_pos = moon.world_pos;
+                        target_radius = moon.radius;
+                        break;
+                    }
+                }
+            } else {
+                for planet in app.world_mut().query::<&Planet>().iter(app.world()) {
+                    if planet.index == idx {
+                        target_pos = planet.world_pos;
+                        target_radius = planet.radius;
+                        break;
+                    }
+                }
+            }
+
+            let arrival_boundary = compute_orbit_boundary(target_radius);
+            let start_pos = target_pos + Vec3::new(arrival_boundary + 1000.0, 0.0, 0.0);
+
+            let mut flight_state = FlightState::default();
+            flight_state.world_pos = start_pos;
+            flight_state.boost_mode = true;
+            app.insert_resource(flight_state);
+
+            let mut autopilot = AutoPilotState::default();
+            autopilot.active = true;
+            autopilot.destination_index = Some(idx);
+            autopilot.destination_name = name;
+            autopilot.arrived = false;
+            app.insert_resource(autopilot);
+
+            app.world_mut().spawn((Ship, Transform::default()));
+
+            let mut schedule = Schedule::default();
+            schedule.add_systems((
+                orbit_planets_system,
+                orbit_moons_system,
+                autopilot_pathfinding_system,
+                autopilot_flight_system,
+                ship_flight_system,
+                celestial_collision_system,
+            ).chain());
+
+            let mut reached_orbit = false;
+            for frame in 0..10000 {
+                app.world_mut()
+                    .resource_mut::<Time>()
+                    .advance_by(std::time::Duration::from_millis(16));
+                schedule.run(app.world_mut());
+
+                let mut cur_target_pos = Vec3::ZERO;
+                if idx == 0 {
+                    cur_target_pos = Vec3::ZERO;
+                } else if idx == 100 {
+                    for moon in app.world_mut().query::<&Moon>().iter(app.world()) {
+                        if moon.name == name {
+                            cur_target_pos = moon.world_pos;
+                            break;
+                        }
+                    }
+                } else {
+                    for planet in app.world_mut().query::<&Planet>().iter(app.world()) {
+                        if planet.index == idx {
+                            cur_target_pos = planet.world_pos;
+                            break;
+                        }
+                    }
+                }
+
+                let ap = app.world().resource::<AutoPilotState>();
+                let fs = app.world().resource::<FlightState>();
+                let real_dist = fs.world_pos.distance(cur_target_pos);
+
+                if frame % 500 == 0 || real_dist <= arrival_boundary * 1.5 {
+                    println!("Destination {name} (idx {idx}) frame {frame}: real_dist={real_dist:.1}, arrival_boundary={arrival_boundary:.1}, pos={:?}, planet_pos={:?}", fs.world_pos, cur_target_pos);
+                }
+
+                if ap.positioning_in_progress || ap.arrived || ap.engine_stopped {
+                    reached_orbit = true;
+                    println!("Destination {name} (idx {idx}) reached orbit mode at frame {frame}!");
+                    break;
+                }
+
+                if !ap.active {
+                    println!("DESTINATION {name} (idx {idx}) FAILED AT FRAME {frame}! real_dist={real_dist:.1}, arrival_boundary={arrival_boundary:.1}");
+                    panic!("Autopilot to destination {name} (idx {idx}) disengaged unexpectedly at frame {frame}!");
+                }
+            }
+
+            assert!(
+                reached_orbit,
+                "Autopilot to destination {name} (idx {idx}) must reach orbit mode successfully"
+            );
+        }
+    }
 }
+
+
+

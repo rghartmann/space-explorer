@@ -5,7 +5,7 @@ use bevy::transform::TransformSystems;
 use crate::components::{
     AutoPilotHudText, CelestialDestinationType, CelestialLabel, EnteringOrbitLabel, Moon, OrbitModeBanner, OrbitModeInfoText, PilotCamera, Planet, Sun,
 };
-use crate::resources::{AppState, AutoPilotState, FlightState};
+use crate::resources::{AppState, AutoPilotState, FlightControlMode, FlightState};
 
 pub struct HudPlugin;
 
@@ -93,8 +93,8 @@ pub fn update_hud_system(
         format!("{:.0} km/s", speed)
     };
 
-    let is_in_orbit = autopilot.active
-        && (autopilot.arrived || autopilot.engine_stopped || autopilot.positioning_in_progress);
+    let mode = autopilot.mode();
+    let is_in_orbit = autopilot.is_in_orbit();
 
     for mut text in &mut text_query {
         if autopilot.active {
@@ -151,16 +151,19 @@ pub fn update_hud_system(
                     "N/A".to_string()
                 };
 
-                let status_label = if autopilot.positioning_in_progress {
-                    "POSITIONING FOR ORBIT INSERTION..."
-                } else if autopilot.leaving_orbit_in_progress {
-                    "DEPARTING ORBIT (EXITING...)"
-                } else if autopilot.engine_stopped || autopilot.arrived {
-                    "IN PLANET ORBIT — 3D HEIGHTMAP SURFACE LOD 100% ACTIVE"
-                } else if autopilot.current_waypoint.is_some() {
-                    "EN ROUTE (BYPASSING OBSTACLE VIA PATH-FINDING)"
-                } else {
-                    "EN ROUTE TO DESTINATION"
+                let status_label = match mode {
+                    FlightControlMode::OrbitPositioning => "POSITIONING FOR ORBIT INSERTION...",
+                    FlightControlMode::OrbitLocked => "IN PLANET ORBIT — 3D HEIGHTMAP SURFACE LOD 100% ACTIVE",
+                    FlightControlMode::AutopilotTransit => {
+                        if autopilot.leaving_orbit_in_progress {
+                            "DEPARTING ORBIT (EXITING...)"
+                        } else if autopilot.current_waypoint.is_some() {
+                            "EN ROUTE (BYPASSING OBSTACLE VIA PATH-FINDING)"
+                        } else {
+                            "EN ROUTE TO DESTINATION"
+                        }
+                    }
+                    FlightControlMode::Manual => "MANUAL FLIGHT MODE",
                 };
 
                 **text = format!(
