@@ -80,6 +80,12 @@ This project incorporates public domain science datasets, NASA planetary maps, a
 
 ---
 
+## Release History
+
+- **`v0.1.0` (Stable Baseline)**: Initial stable release featuring simplified 3rd-person spaceflight navigation controls, AutoNav target locking, celestial HUD projection, dynamic Sun animation, and multi-body planetary rendering. Revert target point for future developments.
+
+---
+
 ## License
 
 This project is open-source under the MIT License. Planetary imagery and astronomical datasets remain subject to their respective NASA/JPL/ESO public domain attributions.
