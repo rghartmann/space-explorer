@@ -87,9 +87,9 @@ pub fn update_hud_system(
                 if let Ok(mut text) = banner_text_query.get_mut(child) {
                     if child_idx == 0 {
                         if autopilot.arrived {
-                            **text = format!("⚠️ ARRIVED AT {} — FOLLOWING PLANET ⚠️", dest_name_upper);
+                            **text = format!("[!] ARRIVED AT {} - FOLLOWING PLANET [!]", dest_name_upper);
                         } else {
-                            **text = format!("⚠️ AUTOPILOT ENGAGED — TRANSIT TO {} ⚠️", dest_name_upper);
+                            **text = format!("[!] AUTOPILOT ENGAGED - TRANSIT TO {} [!]", dest_name_upper);
                         }
                     } else if child_idx == 1 {
                         if autopilot.arrived {

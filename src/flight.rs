@@ -6,8 +6,8 @@ use crate::components::{Asteroid, Moon, PilotCamera, Planet, Ship, Sun};
 use crate::resources::{AppState, AutoPilotState, FlightState};
 
 pub const SPEED_OF_LIGHT: f32 = 299_792.47; // Speed of light in km/s (1.0c)
-pub const STANDARD_MAX_SPEED: f32 = 600_000.0; // 600,000 km/s (~2.0c impulse speed cap)
-pub const MAX_SPEED_CAP: f32 = 15_000_000.0;  // 15,000,000 km/s (~50.0c FTL warp boost cap)
+pub const STANDARD_MAX_SPEED: f32 = 2_000.0;   // 2,000 km/s (10x increased non-warp impulse speed cap)
+pub const MAX_SPEED_CAP: f32 = 29_979_247.0;  // 29,979,247 km/s (100.0c FTL warp boost cap)
 
 pub struct FlightPlugin;
 
@@ -300,7 +300,7 @@ pub fn ship_flight_system(
             let accel_rate = 1.0 - (-5.0 * dt).exp();
             let forward = ship_transform.forward().as_vec3();
             let current_speed = flight_state.velocity.length();
-            let new_speed = current_speed.lerp(target_speed, accel_rate).max(100_000.0);
+            let new_speed = current_speed.lerp(target_speed, accel_rate).max(STANDARD_MAX_SPEED);
             flight_state.velocity = forward * new_speed;
         } else if flight_state.rapid_decel {
             let decel_rate = 1.0 - (-8.0 * dt).exp();
@@ -314,7 +314,7 @@ pub fn ship_flight_system(
                 flight_state.velocity = dir * new_speed;
             }
         } else {
-            let accel_power = 120_000.0 * dt;
+            let accel_power = 1_500.0 * dt;
             let forward = ship_transform.forward().as_vec3();
 
             if keyboard.pressed(KeyCode::KeyW) {
@@ -648,9 +648,9 @@ pub fn autopilot_flight_system(
 
     let target_dir = to_target.normalize_or_zero();
 
-    let decel_start_dist = (arrival_dist * 12.0).max(200_000.0);
+    let decel_start_dist = (arrival_dist * 3.0).max(50_000.0);
 
-    if real_distance_to_dest > decel_start_dist + 20_000.0 && real_distance_to_dest > 80_000.0 {
+    if real_distance_to_dest > decel_start_dist + 10_000.0 && real_distance_to_dest > 30_000.0 {
         flight_state.boost_mode = true;
         flight_state.rapid_decel = false;
     } else if real_distance_to_dest <= decel_start_dist {
@@ -659,13 +659,13 @@ pub fn autopilot_flight_system(
 
     let min_approach_speed = 1200.0;
     let max_cruise_speed = if flight_state.boost_mode {
-        MAX_SPEED_CAP * (real_distance_to_dest / 400_000.0).clamp(0.05, 50.0)
+        MAX_SPEED_CAP * (real_distance_to_dest / 50_000_000.0).clamp(0.05, 1.0)
     } else {
-        (rel_dist_to_arrival * 1.2).clamp(min_approach_speed, MAX_SPEED_CAP)
+        (rel_dist_to_arrival * 2.5).clamp(min_approach_speed, MAX_SPEED_CAP)
     };
 
     let max_safe_rel_speed = if dt > 0.0001 {
-        (rel_dist_to_arrival * 0.75) / dt
+        (rel_dist_to_arrival * 0.85) / dt
     } else {
         MAX_SPEED_CAP
     };
@@ -673,7 +673,7 @@ pub fn autopilot_flight_system(
     let target_rel_speed = max_cruise_speed.min(max_safe_rel_speed);
     let target_vel = destination_vel + target_dir * target_rel_speed;
 
-    let decay_rate = if real_distance_to_dest <= decel_start_dist { 25.0 } else { 8.0 };
+    let decay_rate = if real_distance_to_dest <= decel_start_dist { 14.0 } else { 8.0 };
     let vel_decay = 1.0 - (-decay_rate * dt).exp();
     flight_state.velocity = flight_state.velocity.lerp(target_vel, vel_decay);
 

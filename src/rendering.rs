@@ -181,14 +181,13 @@ pub fn update_planet_area_lights_system(
         }
 
         let local_sun_dir = parent_rot.inverse() * sun_dir_world;
-        let visual_radius = planet_radius * parent_scale;
+        let _visual_radius = planet_radius * parent_scale;
 
         transform.translation = local_sun_dir * (planet_radius * 3.5);
 
-        light.radius = visual_radius * 1.8;
-        light.range = (visual_radius * 12.0).max(10.0);
-        let factor = (visual_radius / 100.0).powf(1.2).clamp(0.2, 5.0);
-        light.intensity = (15_000_000.0 * factor).max(200_000.0);
+        light.radius = 0.0;
+        light.range = 0.0;
+        light.intensity = 0.0;
     }
 }
 

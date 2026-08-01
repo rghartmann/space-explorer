@@ -1,5 +1,4 @@
 use bevy::core_pipeline::tonemapping::Tonemapping;
-use bevy::light::CascadeShadowConfigBuilder;
 use bevy::post_process::bloom::{Bloom, BloomPrefilter};
 use bevy::prelude::*;
 use bevy::camera::visibility::NoFrustumCulling;
@@ -59,7 +58,7 @@ pub fn setup_scene(
             ));
 
             parent.spawn((
-                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel) | MOUSE / ARROWS / A-D (Pitch/Yaw) | Q-E / Z-X (Roll) | SPACE (Warp Boost / Stop Autopilot) | ESC (Exit)"),
+                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel - Cap 2,000 km/s) | MOUSE / ARROWS / A-D (Pitch/Yaw) | Q-E / Z-X (Roll) | SPACE (Warp 100x c / Stop Autopilot) | ESC (Exit)"),
                 TextFont {
                     font_size: 11.5.into(),
                     ..default()
@@ -78,28 +77,33 @@ pub fn setup_scene(
             ));
         });
 
-    // Top-Center Warning Banner for Autopilot Status & Undock Prompt
+    // Center Warning Banner for Autopilot Status & Undock Prompt (positioned above spaceship)
     commands
         .spawn((
             AutopilotWarningBanner,
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(20.0),
+                top: Val::Percent(36.0),
+                left: Val::Auto,
+                right: Val::Auto,
                 align_self: AlignSelf::Center,
-                padding: UiRect::axes(Val::Px(24.0), Val::Px(8.0)),
+                justify_self: JustifySelf::Center,
+                padding: UiRect::axes(Val::Px(24.0), Val::Px(10.0)),
                 border: UiRect::all(Val::Px(1.5)),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(4.0),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.04, 0.08, 0.16, 0.88)),
-            BorderColor::all(Color::srgba(1.0, 0.6, 0.0, 0.9)),
+            BackgroundColor(Color::srgba(0.04, 0.08, 0.16, 0.92)),
+            BorderColor::all(Color::srgba(1.0, 0.6, 0.0, 0.95)),
+            GlobalZIndex(20),
             Visibility::Hidden,
         ))
         .with_children(|parent| {
             parent.spawn((
-                Text::new("⚠️ AUTOPILOT ENGAGED ⚠️"),
+                Text::new("[!] AUTOPILOT ENGAGED [!]"),
                 TextFont {
                     font_size: 15.0.into(),
                     ..default()
@@ -235,11 +239,11 @@ pub fn setup_scene(
     let camera_entity = commands
         .spawn((
             PilotCamera,
-            Camera3d::default(),
             Camera {
                 order: 0,
                 ..default()
             },
+            Camera3d::default(),
             Tonemapping::default(),
             Bloom {
                 intensity: 0.12,
@@ -284,32 +288,23 @@ pub fn setup_scene(
     commands.entity(ship_entity).add_child(ship_light);
 
 
-    // Ambient Fill Light for deep space
+    // Ambient Fill Light for deep space (Subtle & Dramatic)
     commands.spawn(AmbientLight {
-        color: Color::srgba(0.03, 0.04, 0.08, 1.0),
-        brightness: 120.0,
+        color: Color::srgba(0.04, 0.06, 0.12, 1.0),
+        brightness: 1.0,
         affects_lightmapped_meshes: false,
     });
 
-    // Dynamic Sunlight (Cascaded Directional Shadow Light)
-    let cascade_config = CascadeShadowConfigBuilder {
-        num_cascades: 4,
-        maximum_distance: 300_000.0,
-        minimum_distance: 0.1,
-        first_cascade_far_bound: 15.0,
-        overlap_proportion: 0.2,
-    }.build();
-
+    // Dynamic Sunlight
     commands.spawn((
         SunDirectionalLight,
         DirectionalLight {
             color: Color::srgb(1.0, 0.97, 0.92),
-            illuminance: 100_000.0,
-            shadow_maps_enabled: true,
-            contact_shadows_enabled: true,
+            illuminance: 15_000.0,
+            shadow_maps_enabled: false,
+            contact_shadows_enabled: false,
             ..default()
         },
-        cascade_config,
         Transform::IDENTITY,
     ));
 
@@ -369,9 +364,9 @@ pub fn setup_scene(
     // Sun Core Sunlight (PointLight)
     commands.spawn((
         PointLight {
-            intensity: 50_000_000.0,
+            intensity: 100_000.0,
             color: Color::srgb(1.0, 0.96, 0.88),
-            range: 50_000_000.0,
+            range: 5_000_000.0,
             shadow_maps_enabled: false,
             ..default()
         },
@@ -390,8 +385,10 @@ pub fn setup_scene(
     let mercury_tex: Handle<Image> = asset_server.load("textures/mercury.jpg");
     let mercury_mesh = meshes.add(create_uv_sphere(2439.7, 192, 96));
     let mercury_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.35, 0.35, 0.35),
         base_color_texture: Some(mercury_tex.clone()),
-        perceptual_roughness: 0.9,
+        perceptual_roughness: 0.95,
+        reflectance: 0.08,
         ..default()
     });
     let mercury_entity = commands.spawn((
@@ -420,8 +417,10 @@ pub fn setup_scene(
     let venus_tex: Handle<Image> = asset_server.load("textures/venus.jpg");
     let venus_mesh = meshes.add(create_uv_sphere(6051.8, 192, 96));
     let venus_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.38, 0.36, 0.32),
         base_color_texture: Some(venus_tex.clone()),
-        perceptual_roughness: 0.85,
+        perceptual_roughness: 0.90,
+        reflectance: 0.10,
         ..default()
     });
     let venus_entity = commands.spawn((
@@ -446,9 +445,11 @@ pub fn setup_scene(
     let earth_tex: Handle<Image> = asset_server.load("textures/earth.jpg");
     let earth_mesh = meshes.add(create_uv_sphere(6371.0, 192, 96));
     let earth_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.42, 0.42, 0.42),
         base_color_texture: Some(earth_tex.clone()),
-        perceptual_roughness: 0.6,
-        metallic: 0.1,
+        perceptual_roughness: 0.70,
+        metallic: 0.05,
+        reflectance: 0.12,
         ..default()
     });
     let earth_entity = commands.spawn((
@@ -492,8 +493,10 @@ pub fn setup_scene(
     let moon_tex: Handle<Image> = asset_server.load("textures/moon.jpg");
     let moon_mesh = meshes.add(create_uv_sphere(1737.4, 96, 48));
     let moon_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.32, 0.32, 0.32),
         base_color_texture: Some(moon_tex.clone()),
-        perceptual_roughness: 0.9,
+        perceptual_roughness: 0.95,
+        reflectance: 0.06,
         ..default()
     });
     let moon_entity = commands.spawn((
@@ -522,8 +525,10 @@ pub fn setup_scene(
     let mars_tex: Handle<Image> = asset_server.load("textures/mars.jpg");
     let mars_mesh = meshes.add(create_uv_sphere(3389.5, 192, 96));
     let mars_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.40, 0.35, 0.30),
         base_color_texture: Some(mars_tex.clone()),
-        perceptual_roughness: 0.88,
+        perceptual_roughness: 0.90,
+        reflectance: 0.08,
         ..default()
     });
     let mars_entity = commands.spawn((
@@ -552,8 +557,10 @@ pub fn setup_scene(
     let ceres_tex: Handle<Image> = asset_server.load("textures/ceres.jpg");
     let ceres_mesh = meshes.add(create_uv_sphere(473.0, 96, 48));
     let ceres_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.32, 0.32, 0.32),
         base_color_texture: Some(ceres_tex.clone()),
-        perceptual_roughness: 0.9,
+        perceptual_roughness: 0.95,
+        reflectance: 0.06,
         ..default()
     });
     let ceres_entity = commands.spawn((
@@ -578,8 +585,8 @@ pub fn setup_scene(
     let asteroid_tex: Handle<Image> = asset_server.load("textures/asteroid.jpg");
     let asteroid_base_mat = materials.add(StandardMaterial {
         base_color_texture: Some(asteroid_tex),
-        perceptual_roughness: 0.9,
-        metallic: 0.1,
+        perceptual_roughness: 0.95,
+        reflectance: 0.08,
         ..default()
     });
 
@@ -658,8 +665,10 @@ pub fn setup_scene(
     let jupiter_tex: Handle<Image> = asset_server.load("textures/jupiter.jpg");
     let jupiter_mesh = meshes.add(create_uv_sphere(69911.0, 384, 192));
     let jupiter_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.38, 0.35, 0.32),
         base_color_texture: Some(jupiter_tex.clone()),
-        perceptual_roughness: 0.5,
+        perceptual_roughness: 0.88,
+        reflectance: 0.10,
         ..default()
     });
     let jupiter_entity = commands.spawn((
@@ -689,6 +698,7 @@ pub fn setup_scene(
     let io_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.9, 0.85, 0.2),
         perceptual_roughness: 0.7,
+        reflectance: 0.20,
         ..default()
     });
     let io_entity = commands.spawn((
@@ -716,9 +726,9 @@ pub fn setup_scene(
     let europa_pos = jupiter_pos + Vec3::new(europa_orbit_radius * europa_angle.cos(), 0.0, europa_orbit_radius * europa_angle.sin());
     let europa_mesh = meshes.add(create_uv_sphere(1560.8, 192, 96));
     let europa_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.85, 0.88, 0.95),
-        perceptual_roughness: 0.2,
-        metallic: 0.1,
+        base_color: Color::srgb(0.82, 0.85, 0.92),
+        perceptual_roughness: 0.65,
+        reflectance: 0.25,
         ..default()
     });
     let europa_entity = commands.spawn((
@@ -747,8 +757,10 @@ pub fn setup_scene(
     let saturn_tex: Handle<Image> = asset_server.load("textures/saturn.jpg");
     let saturn_mesh = meshes.add(create_uv_sphere(58232.0, 384, 192));
     let saturn_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.35, 0.33, 0.28),
         base_color_texture: Some(saturn_tex.clone()),
-        perceptual_roughness: 0.45,
+        perceptual_roughness: 0.88,
+        reflectance: 0.10,
         ..default()
     });
     let saturn_entity = commands
@@ -775,14 +787,13 @@ pub fn setup_scene(
     let saturn_ring_tex: Handle<Image> = asset_server.load("textures/saturn_ring.png");
     let ring_plane_mesh = meshes.add(create_flat_ring_mesh(74500.0, 136775.0, 256, 16));
     let ring_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.38, 0.35, 0.30, 0.80),
         base_color_texture: Some(saturn_ring_tex.clone()),
-        emissive_texture: Some(saturn_ring_tex.clone()),
-        emissive: LinearRgba::new(0.3, 0.26, 0.2, 1.0),
         alpha_mode: AlphaMode::Blend,
         cull_mode: None,
         double_sided: true,
-        perceptual_roughness: 0.35,
-        metallic: 0.1,
+        perceptual_roughness: 0.85,
+        reflectance: 0.10,
         ..default()
     });
 
@@ -802,6 +813,7 @@ pub fn setup_scene(
     let ring_rock_mat = materials.add(StandardMaterial {
         base_color_texture: Some(asset_server.load("textures/asteroid.jpg")),
         perceptual_roughness: 0.8,
+        reflectance: 0.1,
         ..default()
     });
 
@@ -840,8 +852,10 @@ pub fn setup_scene(
     let uranus_tex: Handle<Image> = asset_server.load("textures/uranus.jpg");
     let uranus_mesh = meshes.add(create_uv_sphere(25362.0, 256, 128));
     let uranus_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.32, 0.40, 0.42),
         base_color_texture: Some(uranus_tex.clone()),
-        perceptual_roughness: 0.3,
+        perceptual_roughness: 0.85,
+        reflectance: 0.10,
         ..default()
     });
     let uranus_entity = commands.spawn((
@@ -870,8 +884,10 @@ pub fn setup_scene(
     let neptune_tex: Handle<Image> = asset_server.load("textures/neptune.jpg");
     let neptune_mesh = meshes.add(create_uv_sphere(24622.0, 256, 128));
     let neptune_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.30, 0.35, 0.45),
         base_color_texture: Some(neptune_tex.clone()),
-        perceptual_roughness: 0.25,
+        perceptual_roughness: 0.85,
+        reflectance: 0.10,
         ..default()
     });
     let neptune_entity = commands.spawn((
@@ -900,8 +916,10 @@ pub fn setup_scene(
     let pluto_tex: Handle<Image> = asset_server.load("textures/pluto.jpg");
     let pluto_mesh = meshes.add(create_uv_sphere(1188.3, 192, 96));
     let pluto_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.38, 0.35, 0.32),
         base_color_texture: Some(pluto_tex.clone()),
-        perceptual_roughness: 0.7,
+        perceptual_roughness: 0.88,
+        reflectance: 0.10,
         ..default()
     });
     let pluto_entity = commands.spawn((
@@ -930,7 +948,8 @@ pub fn setup_scene(
     let charon_mesh = meshes.add(create_uv_sphere(606.0, 192, 96));
     let charon_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.5, 0.48, 0.45),
-        perceptual_roughness: 0.85,
+        perceptual_roughness: 0.9,
+        reflectance: 0.12,
         ..default()
     });
     let charon_entity = commands.spawn((
@@ -960,8 +979,8 @@ pub fn setup_scene(
     let haumea_mesh = meshes.add(create_uv_sphere(1050.0, 192, 96));
     let haumea_mat = materials.add(StandardMaterial {
         base_color_texture: Some(haumea_tex.clone()),
-        perceptual_roughness: 0.5,
-        metallic: 0.1,
+        perceptual_roughness: 0.75,
+        reflectance: 0.18,
         ..default()
     });
     let haumea_entity = commands.spawn((
@@ -991,7 +1010,8 @@ pub fn setup_scene(
     let makemake_mesh = meshes.add(create_uv_sphere(715.0, 192, 96));
     let makemake_mat = materials.add(StandardMaterial {
         base_color_texture: Some(makemake_tex.clone()),
-        perceptual_roughness: 0.65,
+        perceptual_roughness: 0.75,
+        reflectance: 0.18,
         ..default()
     });
     let makemake_entity = commands.spawn((
@@ -1021,8 +1041,8 @@ pub fn setup_scene(
     let eris_mesh = meshes.add(create_uv_sphere(1163.0, 192, 96));
     let eris_mat = materials.add(StandardMaterial {
         base_color_texture: Some(eris_tex.clone()),
-        perceptual_roughness: 0.3,
-        metallic: 0.1,
+        perceptual_roughness: 0.75,
+        reflectance: 0.18,
         ..default()
     });
     let eris_entity = commands.spawn((
@@ -1260,10 +1280,10 @@ pub fn spawn_planet_area_light(
                 planet_radius: radius,
             },
             PointLight {
-                intensity: 15_000_000.0,
+                intensity: 0.0,
                 color: Color::srgb(1.0, 0.96, 0.88),
-                range: radius * 12.0,
-                radius: radius * 1.8,
+                range: 0.0,
+                radius: 0.0,
                 shadow_maps_enabled: false,
                 ..default()
             },
@@ -1329,12 +1349,12 @@ pub fn setup_loading_screen(
     }
 
     commands.spawn((
-        Camera2d,
         Camera {
             order: 100,
             clear_color: ClearColorConfig::Custom(Color::srgb(0.001, 0.001, 0.003)),
             ..default()
         },
+        Camera2d::default(),
         LoadingScreenUI,
     ));
 
