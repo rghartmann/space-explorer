@@ -70,13 +70,7 @@ pub struct PlanetAreaLight {
 pub struct AutoPilotHudText;
 
 #[derive(Component)]
-pub struct OrbitModeBanner;
-
-#[derive(Component)]
-pub struct OrbitModeInfoText;
-
-#[derive(Component)]
-pub struct EnteringOrbitLabel;
+pub struct AutopilotWarningBanner;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CelestialDestinationType {

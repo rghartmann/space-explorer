@@ -248,16 +248,12 @@ pub fn update_planet_lod_mesh_system(
 ) {
     let dt = time.delta_secs();
 
-    // Determine which celestial body (if any) is currently orbited or approached in orbit
-    let is_in_orbit_state = autopilot.active
-        && (autopilot.arrived || autopilot.engine_stopped || autopilot.positioning_in_progress);
-
     for (mut lod, mesh_handle) in &mut lod_query {
         if !lod.is_initialized {
             continue;
         }
 
-        let is_destination = if is_in_orbit_state {
+        let is_destination = if autopilot.active {
             if let Some(destination_idx) = autopilot.destination_index {
                 if lod.is_moon {
                     autopilot.destination_name == lod.moon_name
@@ -271,38 +267,34 @@ pub fn update_planet_lod_mesh_system(
             false
         };
 
-        // Check proximity if manually orbiting near a planet
-        let is_near_and_orbiting = if !is_destination && is_in_orbit_state {
-            if lod.is_moon {
-                let mut near = false;
-                for moon in &moon_query {
-                    if moon.name == lod.moon_name {
-                        let dist = flight_state.world_pos.distance(moon.world_pos);
-                        if dist < moon.radius * 6.0 {
-                            near = true;
-                            break;
-                        }
+        // Check proximity if ship is near a planet or moon surface
+        let is_near = if lod.is_moon {
+            let mut near = false;
+            for moon in &moon_query {
+                if moon.name == lod.moon_name {
+                    let dist = flight_state.world_pos.distance(moon.world_pos);
+                    if dist < moon.radius * 6.0 {
+                        near = true;
+                        break;
                     }
                 }
-                near
-            } else {
-                let mut near = false;
-                for planet in &planet_query {
-                    if planet.index == lod.planet_index {
-                        let dist = flight_state.world_pos.distance(planet.world_pos);
-                        if dist < planet.radius * 6.0 {
-                            near = true;
-                            break;
-                        }
-                    }
-                }
-                near
             }
+            near
         } else {
-            false
+            let mut near = false;
+            for planet in &planet_query {
+                if planet.index == lod.planet_index {
+                    let dist = flight_state.world_pos.distance(planet.world_pos);
+                    if dist < planet.radius * 6.0 {
+                        near = true;
+                        break;
+                    }
+                }
+            }
+            near
         };
 
-        let target_blend = if is_destination || is_near_and_orbiting { 1.0 } else { 0.0 };
+        let target_blend = if is_destination || is_near { 1.0 } else { 0.0 };
         lod.target_blend = target_blend;
 
         // Smooth continuous transition with S-curve easing

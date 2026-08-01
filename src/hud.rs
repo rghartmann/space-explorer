@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy::transform::TransformSystems;
 
 use crate::components::{
-    AutoPilotHudText, CelestialDestinationType, CelestialLabel, EnteringOrbitLabel, Moon, OrbitModeBanner, OrbitModeInfoText, PilotCamera, Planet, Sun,
+    AutoPilotHudText, AutopilotWarningBanner, CelestialDestinationType, CelestialLabel, Moon, PilotCamera, Planet, Sun,
 };
 use crate::resources::{AppState, AutoPilotState, FlightControlMode, FlightState};
 
@@ -65,20 +65,46 @@ pub fn exit_on_esc(
 
 use crate::flight::SPEED_OF_LIGHT;
 
-type OrbitQueryFilter = (With<OrbitModeBanner>, With<OrbitModeInfoText>);
-type EnteringOrbitQueryFilter = (With<EnteringOrbitLabel>, Without<OrbitModeBanner>, Without<AutoPilotHudText>);
-
 pub fn update_hud_system(
     autopilot: Res<AutoPilotState>,
     flight_state: Res<FlightState>,
     planet_query: Query<&Planet>,
     moon_query: Query<&Moon>,
-    mut text_query: Query<&mut Text, (With<AutoPilotHudText>, Without<OrbitModeInfoText>)>,
-    mut orbit_query: Query<(&mut Node, &mut Visibility, &mut Text), OrbitQueryFilter>,
-    mut entering_orbit_query: Query<&mut Visibility, EnteringOrbitQueryFilter>,
+    mut text_query: Query<&mut Text, With<AutoPilotHudText>>,
+    mut banner_query: Query<(&mut Visibility, &Children), (With<AutopilotWarningBanner>, Without<AutoPilotHudText>)>,
+    mut banner_text_query: Query<&mut Text, Without<AutoPilotHudText>>,
 ) {
     let speed = flight_state.velocity.length();
     let speed_of_light = SPEED_OF_LIGHT;
+
+    for (mut vis, children) in &mut banner_query {
+        if autopilot.active {
+            *vis = Visibility::Inherited;
+            let dest_name_upper = autopilot.destination_name.to_uppercase();
+
+            let mut child_idx = 0;
+            for child in children.iter() {
+                if let Ok(mut text) = banner_text_query.get_mut(child) {
+                    if child_idx == 0 {
+                        if autopilot.arrived {
+                            **text = format!("⚠️ ARRIVED AT {} — FOLLOWING PLANET ⚠️", dest_name_upper);
+                        } else {
+                            **text = format!("⚠️ AUTOPILOT ENGAGED — TRANSIT TO {} ⚠️", dest_name_upper);
+                        }
+                    } else if child_idx == 1 {
+                        if autopilot.arrived {
+                            **text = "Press [SPACE] to Undock".to_string();
+                        } else {
+                            **text = "Press [SPACE] to Cancel Autopilot".to_string();
+                        }
+                    }
+                    child_idx += 1;
+                }
+            }
+        } else {
+            *vis = Visibility::Hidden;
+        }
+    }
 
     let speed_str = if flight_state.boost_mode {
         format!("{:.0} km/s ({:.2}x c - FTL WARP BOOST ACTIVE)", speed, speed / speed_of_light)
@@ -94,7 +120,6 @@ pub fn update_hud_system(
     };
 
     let mode = autopilot.mode();
-    let is_in_orbit = autopilot.is_in_orbit();
 
     for mut text in &mut text_query {
         if autopilot.active {
@@ -125,11 +150,9 @@ pub fn update_hud_system(
                     dist_str = format_dual_space_distance(dist);
                 }
 
-                let eta_str = if is_in_orbit || autopilot.arrived || autopilot.engine_stopped {
-                    "ARRIVED".to_string()
-                } else if let Some(dest_pos) = dest_world_pos {
+                let eta_str = if let Some(dest_pos) = dest_world_pos {
                     let dist_km = flight_state.world_pos.distance(dest_pos);
-                    if speed < 0.1 {
+                    if speed < 0.1 || autopilot.arrived {
                         "N/A".to_string()
                     } else {
                         let eta_secs = dist_km / speed;
@@ -152,15 +175,14 @@ pub fn update_hud_system(
                 };
 
                 let status_label = match mode {
-                    FlightControlMode::OrbitPositioning => "POSITIONING FOR ORBIT INSERTION...",
-                    FlightControlMode::OrbitLocked => "IN PLANET ORBIT — 3D HEIGHTMAP SURFACE LOD 100% ACTIVE",
+                    FlightControlMode::AutopilotArrived => {
+                        "ARRIVED & FOLLOWING PLANET (PRESS [SPACE] TO UNDOCK)"
+                    }
                     FlightControlMode::AutopilotTransit => {
-                        if autopilot.leaving_orbit_in_progress {
-                            "DEPARTING ORBIT (EXITING...)"
-                        } else if autopilot.current_waypoint.is_some() {
+                        if autopilot.current_waypoint.is_some() {
                             "EN ROUTE (BYPASSING OBSTACLE VIA PATH-FINDING)"
                         } else {
-                            "EN ROUTE TO DESTINATION"
+                            "EN ROUTE TO DESTINATION (APPROACHING SURFACE...)"
                         }
                     }
                     FlightControlMode::Manual => "MANUAL FLIGHT MODE",
@@ -175,55 +197,16 @@ pub fn update_hud_system(
                     status_label
                 );
             }
-        } else if autopilot.leaving_orbit_in_progress {
-            **text = format!(
-                "FLIGHT STATUS: DEPARTING ORBIT | SPEED: {} | DISENGAGING ORBITAL LOCK & REVERTING LOD...",
-                speed_str
-            );
         } else {
             let mode_hint = if flight_state.boost_mode {
                 "BOOST MODE | PRESS SPACE AGAIN TO BRAKE QUICKLY"
             } else {
-                "W/S: ACCEL/DECEL | MOUSE/ARROWS: STEER | Z/C: ROLL | SPACE: WARP BOOST | [0-9/C/H/K/E/M]: AUTOPILOT | [SPACE / O]: STOP AUTOPILOT"
+                "W/S: ACCEL/DECEL | MOUSE/ARROWS/A-D: PITCH/YAW | Q-E/Z-X: ROLL | SPACE: WARP BOOST | [0-9/C/H/K/E/M]: AUTOPILOT | SPACE: CANCEL AP"
             };
             **text = format!(
                 "FLIGHT STATUS: MANUAL CONTROL | SPEED: {} | {}",
                 speed_str, mode_hint
             );
-        }
-    }
-
-    let speed_mult = if autopilot.orbit_speed_multiplier <= 0.0 { 1.0 } else { autopilot.orbit_speed_multiplier };
-
-    for (mut node, mut vis, mut text) in &mut orbit_query {
-        if is_in_orbit {
-            let destination_name = autopilot.destination_name.to_uppercase();
-            let phase = if autopilot.positioning_in_progress {
-                "POSITIONING FOR ORBIT INSERTION"
-            } else {
-                "STABLE ORBITAL LOCK ACTIVE"
-            };
-            node.display = Display::Flex;
-            *vis = Visibility::Inherited;
-            **text = format!(
-                "ORBIT MODE: ENGAGED | DESTINATION: {} | SPEED: {:.2}x | STATUS: {} | CONTROLS: [W/S] Speed | [A/D] Orbit Yaw | [Z/C] Ship Roll | [Q/E] Range | [SPACE / O] Exit Orbit & Restore Manual Controls",
-                destination_name, speed_mult, phase
-            );
-        } else if autopilot.leaving_orbit_in_progress {
-            node.display = Display::Flex;
-            *vis = Visibility::Inherited;
-            **text = "ORBIT MODE: DISENGAGING... | REVERTING RENDER MODE & DISENGAGING ORBITAL LOCK".to_string();
-        } else {
-            node.display = Display::None;
-            *vis = Visibility::Hidden;
-        }
-    }
-
-    for mut vis in &mut entering_orbit_query {
-        if autopilot.entering_orbit_timer > 0.0 {
-            *vis = Visibility::Inherited;
-        } else {
-            *vis = Visibility::Hidden;
         }
     }
 }

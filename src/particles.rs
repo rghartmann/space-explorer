@@ -220,7 +220,7 @@ pub fn thruster_particle_system(
     let is_boosting = flight_state.boost_mode;
     let speed = flight_state.velocity.length();
     let is_moving = speed > 0.1;
-    let is_accelerating = keyboard.pressed(KeyCode::KeyW) || (autopilot.active && !autopilot.arrived && !autopilot.engine_stopped);
+    let is_accelerating = keyboard.pressed(KeyCode::KeyW) || autopilot.active;
 
     if !is_boosting && !is_moving && !is_accelerating {
         for (_, mut light) in &mut light_query {

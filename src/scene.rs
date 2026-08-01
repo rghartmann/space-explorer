@@ -59,7 +59,7 @@ pub fn setup_scene(
             ));
 
             parent.spawn((
-                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel) | MOUSE (Steer Pitch/Yaw) | A/D (Orbit Yaw) | Z/C (Roll) | Q/E (Orbit Range) | SPACE (Warp Boost / Stop Autopilot) | [O] Enter/Leave Orbit | ESC (Exit)"),
+                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel) | MOUSE / ARROWS / A-D (Pitch/Yaw) | Q-E / Z-X (Roll) | SPACE (Warp Boost / Stop Autopilot) | ESC (Exit)"),
                 TextFont {
                     font_size: 11.5.into(),
                     ..default()
@@ -69,57 +69,50 @@ pub fn setup_scene(
 
             parent.spawn((
                 AutoPilotHudText,
-                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [0-9/C/H/K/E/M] TO ENGAGE AUTOPILOT | PRESS [SPACE / O] TO STOP AUTOPILOT & RESTORE MANUAL CONTROLS"),
+                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [0-9/C/H/K/E/M] TO ENGAGE AUTOPILOT | PRESS SPACE TO STOP AUTOPILOT"),
                 TextFont {
                     font_size: 13.0.into(),
                     ..default()
                 },
                 TextColor(Color::srgb(1.0, 0.85, 0.2)),
             ));
-
-            // Line 4: Orbit Mode indicator text following the exact pattern of other HUD control labels (Red font)
-            parent.spawn((
-                OrbitModeBanner,
-                OrbitModeInfoText,
-                Text::new("ORBIT MODE: IN ORBIT MODE | DESTINATION: EARTH | SPEED: 1.00x | CONTROLS: [W/S] Speed | [A/D] Yaw | [Z/C] Roll | [Q/E] Range | [SPACE / O] Exit Orbit & Restore Manual Controls"),
-                TextFont {
-                    font_size: 12.0.into(),
-                    ..default()
-                },
-                TextColor(Color::srgb(1.0, 0.25, 0.25)), // Red font
-                Node {
-                    display: Display::None,
-                    ..default()
-                },
-                Visibility::Hidden,
-            ));
         });
 
-    // CENTER SCREEN NOTIFICATION: "Entering Orbit Mode" (brief red label when autopilot reaches destination)
+    // Top-Center Warning Banner for Autopilot Status & Undock Prompt
     commands
         .spawn((
-            EnteringOrbitLabel,
+            AutopilotWarningBanner,
             Node {
                 position_type: PositionType::Absolute,
-                justify_self: JustifySelf::Center,
+                top: Val::Px(20.0),
                 align_self: AlignSelf::Center,
-                padding: UiRect::axes(Val::Px(22.0), Val::Px(10.0)),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(8.0)),
+                padding: UiRect::axes(Val::Px(24.0), Val::Px(8.0)),
+                border: UiRect::all(Val::Px(1.5)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::Column,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.85, 0.1, 0.1, 0.95)),
-            BorderColor::all(Color::srgba(1.0, 0.4, 0.4, 1.0)),
+            BackgroundColor(Color::srgba(0.04, 0.08, 0.16, 0.88)),
+            BorderColor::all(Color::srgba(1.0, 0.6, 0.0, 0.9)),
             Visibility::Hidden,
         ))
         .with_children(|parent| {
             parent.spawn((
-                Text::new("Entering Orbit Mode"),
+                Text::new("⚠️ AUTOPILOT ENGAGED ⚠️"),
                 TextFont {
-                    font_size: 22.0.into(),
+                    font_size: 15.0.into(),
                     ..default()
                 },
-                TextColor(Color::srgb(1.0, 1.0, 1.0)),
+                TextColor(Color::srgb(1.0, 0.7, 0.1)),
+            ));
+            parent.spawn((
+                Text::new("Press [SPACE] to Undock / Cancel"),
+                TextFont {
+                    font_size: 12.0.into(),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.85, 0.95, 1.0)),
             ));
         });
 
