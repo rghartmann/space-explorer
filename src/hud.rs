@@ -5,6 +5,7 @@ use bevy::transform::TransformSystems;
 use crate::components::{
     AutoPilotHudText, AutopilotWarningBanner, CelestialDestinationType, CelestialLabel, Moon, PilotCamera, Planet, Sun,
 };
+use crate::flight::SPEED_OF_LIGHT;
 use crate::resources::{AppState, AutoPilotState, FlightControlMode, FlightState};
 
 pub struct HudPlugin;
@@ -62,8 +63,6 @@ pub fn exit_on_esc(
         app_exit.write(AppExit::Success);
     }
 }
-
-use crate::flight::SPEED_OF_LIGHT;
 
 pub fn update_hud_system(
     autopilot: Res<AutoPilotState>,

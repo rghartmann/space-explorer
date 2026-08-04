@@ -11,14 +11,14 @@ mod scene;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
 
-use audio::AudioPlugin;
-use flight::FlightPlugin;
-use hud::HudPlugin;
-use lod::PlanetLodPlugin;
-use particles::ParticlePlugin;
-use rendering::RenderingPlugin;
-use resources::{AppState, AutoPilotState, FlightState, LoadingAssets};
-use scene::ScenePlugin;
+use crate::audio::AudioPlugin;
+use crate::flight::FlightPlugin;
+use crate::hud::HudPlugin;
+use crate::lod::PlanetLodPlugin;
+use crate::particles::ParticlePlugin;
+use crate::rendering::RenderingPlugin;
+use crate::resources::{AppState, AutoPilotState, FlightState, LoadingAssets};
+use crate::scene::ScenePlugin;
 
 fn main() {
     App::new()

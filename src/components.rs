@@ -113,7 +113,17 @@ pub const AUTOPILOT_DESTINATIONS: &[AutopilotDestination] = &[
     AutopilotDestination { key_num: 15, name: "Haumea", dest_type: CelestialDestinationType::Planet(11) },
     AutopilotDestination { key_num: 16, name: "Makemake", dest_type: CelestialDestinationType::Planet(12) },
     AutopilotDestination { key_num: 17, name: "Eris", dest_type: CelestialDestinationType::Planet(13) },
+    AutopilotDestination { key_num: 99, name: "Aphora", dest_type: CelestialDestinationType::Planet(99) },
 ];
+
+#[derive(Component)]
+pub struct FlyingDragon {
+    pub orbit_radius: f32,
+    pub fly_speed: f32,
+    pub angle: f32,
+    pub tilt: f32,
+    pub phase_offset: f32,
+}
 
 pub fn get_destination_by_key(key: usize) -> Option<&'static AutopilotDestination> {
     AUTOPILOT_DESTINATIONS.iter().find(|d| d.key_num == key)

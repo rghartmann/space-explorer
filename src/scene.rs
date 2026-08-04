@@ -1,7 +1,7 @@
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::post_process::bloom::{Bloom, BloomPrefilter};
 use bevy::prelude::*;
-use bevy::camera::visibility::NoFrustumCulling;
 
 use crate::audio::{ensure_ambient_piano_file, ensure_engine_hum_file};
 use crate::components::*;
@@ -161,6 +161,28 @@ pub fn setup_scene(
             ));
 
             for dest in AUTOPILOT_DESTINATIONS {
+                let is_aphora = dest.key_num == 99;
+                let bg_col = if is_aphora {
+                    BackgroundColor(Color::srgba(0.25, 0.05, 0.40, 0.85))
+                } else {
+                    BackgroundColor(Color::srgba(0.05, 0.1, 0.18, 0.65))
+                };
+                let border_col = if is_aphora {
+                    BorderColor::all(Color::srgba(0.85, 0.25, 1.0, 0.85))
+                } else {
+                    BorderColor::all(Color::srgba(0.0, 0.7, 0.9, 0.25))
+                };
+                let key_col = if is_aphora {
+                    TextColor(Color::srgb(0.95, 0.55, 1.0))
+                } else {
+                    TextColor(Color::srgb(1.0, 0.8, 0.2))
+                };
+                let name_col = if is_aphora {
+                    TextColor(Color::srgb(0.95, 0.75, 1.0))
+                } else {
+                    TextColor(Color::srgb(0.9, 0.95, 1.0))
+                };
+
                 parent
                     .spawn((
                         Button,
@@ -176,8 +198,8 @@ pub fn setup_scene(
                             border: UiRect::all(Val::Px(1.0)),
                             ..default()
                         },
-                        BackgroundColor(Color::srgba(0.05, 0.1, 0.18, 0.65)),
-                        BorderColor::all(Color::srgba(0.0, 0.7, 0.9, 0.25)),
+                        bg_col,
+                        border_col,
                     ))
                     .with_children(|row| {
                         row.spawn((
@@ -186,7 +208,7 @@ pub fn setup_scene(
                                 font_size: 11.0.into(),
                                 ..default()
                             },
-                            TextColor(Color::srgb(1.0, 0.8, 0.2)),
+                            key_col,
                         ));
                         row.spawn((
                             Text::new(dest.name.to_uppercase()),
@@ -194,7 +216,7 @@ pub fn setup_scene(
                                 font_size: 11.0.into(),
                                 ..default()
                             },
-                            TextColor(Color::srgb(0.9, 0.95, 1.0)),
+                            name_col,
                         ));
                     });
             }
@@ -203,6 +225,11 @@ pub fn setup_scene(
     // 2D NAVIGATION LABELS FOR CELESTIAL BODIES IN THE DISTANCE
     for dest in AUTOPILOT_DESTINATIONS {
         let key_prefix = format!("[{}] ", dest.key_num);
+        let label_color = if dest.key_num == 99 {
+            TextColor(Color::srgba(0.85, 0.35, 1.0, 0.95))
+        } else {
+            TextColor(Color::srgba(0.0, 0.75, 0.85, 0.65))
+        };
         commands
             .spawn((
                 CelestialLabel {
@@ -228,7 +255,7 @@ pub fn setup_scene(
                         font_size: 9.5.into(),
                         ..default()
                     },
-                    TextColor(Color::srgba(0.0, 0.75, 0.85, 0.65)),
+                    label_color,
                 ));
             });
     }
@@ -251,10 +278,6 @@ pub fn setup_scene(
         PlaybackSettings::LOOP.with_volume(bevy::audio::Volume::Linear(0.35)),
     ));
 
-    // ----------------------------------------------------
-    // SHIP AVATAR & 3RD-PERSON CAMERA PERSPECTIVE
-    // ----------------------------------------------------
-    // ----------------------------------------------------
     // ----------------------------------------------------
     // SHIP AVATAR & 3RD-PERSON CAMERA PERSPECTIVE
     // ----------------------------------------------------
@@ -1123,6 +1146,116 @@ pub fn setup_scene(
     )).id();
     spawn_planet_area_light(&mut commands, eris_entity, eris_pos, 1163.0);
 
+    // --- PLANET APHORA (48.5 AU - SATURN-LIKE PLANET WITH 2 RINGS & POPULATED BY DRAGONS) ---
+    let aphora_orbit_radius = 48.5 * AU; // 7,255,496,728.9 km (just outside solar system, close to Makemake)
+    let aphora_orbit_speed = 0.00044;
+    let aphora_angle = next_orbit_angle();
+    let aphora_pos = Vec3::new(aphora_orbit_radius * aphora_angle.cos(), 0.0, aphora_orbit_radius * aphora_angle.sin());
+    let aphora_tex: Handle<Image> = asset_server.load("textures/aphora.png");
+    let aphora_mesh = meshes.add(create_uv_sphere(52000.0, 192, 96));
+    let aphora_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.9, 0.8, 0.95),
+        base_color_texture: Some(aphora_tex.clone()),
+        perceptual_roughness: 0.85,
+        reflectance: 0.12,
+        ..default()
+    });
+
+    let aphora_entity = commands
+        .spawn((
+            Planet {
+                name: "Aphora",
+                index: 99,
+                radius: 52000.0,
+                orbit_radius: aphora_orbit_radius,
+                orbit_speed: aphora_orbit_speed,
+                orbit_angle: aphora_angle,
+                rotation_speed: 0.0075,
+                world_pos: aphora_pos,
+            },
+            PlanetLod::new(99, false, "", 30.0, aphora_tex.clone(), 384, 192),
+            Mesh3d(aphora_mesh),
+            MeshMaterial3d(aphora_mat),
+            Transform::from_translation(aphora_pos).with_scale(Vec3::new(1.0, 0.91, 1.0)),
+        ))
+        .id();
+    spawn_planet_area_light(&mut commands, aphora_entity, aphora_pos, 52000.0);
+
+    // Aphora 2 Ring System (Saturn-like with 2 distinct rings in pink and purple tones)
+    let ring_tilt = Quat::from_rotation_x(0.40);
+
+    // Ring 1 (Inner Ring: 68,000 km to 98,000 km, Hot Pink/Magenta)
+    let aphora_ring1_tex: Handle<Image> = asset_server.load("textures/aphora_ring1.png");
+    let ring1_mesh = meshes.add(create_flat_ring_mesh(68000.0, 98000.0, 256, 16));
+    let ring1_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(1.0, 0.8, 0.95, 0.90),
+        base_color_texture: Some(aphora_ring1_tex),
+        alpha_mode: AlphaMode::Blend,
+        cull_mode: None,
+        double_sided: true,
+        perceptual_roughness: 0.8,
+        reflectance: 0.1,
+        ..default()
+    });
+    let ring1_plane = commands
+        .spawn((
+            Mesh3d(ring1_mesh),
+            MeshMaterial3d(ring1_mat),
+            Transform::from_rotation(ring_tilt),
+        ))
+        .id();
+    commands.entity(aphora_entity).add_child(ring1_plane);
+
+    // Ring 2 (Outer Ring: 104,000 km to 135,000 km, Deep Purple/Violet)
+    let aphora_ring2_tex: Handle<Image> = asset_server.load("textures/aphora_ring2.png");
+    let ring2_mesh = meshes.add(create_flat_ring_mesh(104000.0, 135000.0, 256, 16));
+    let ring2_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.9, 0.7, 1.0, 0.85),
+        base_color_texture: Some(aphora_ring2_tex),
+        alpha_mode: AlphaMode::Blend,
+        cull_mode: None,
+        double_sided: true,
+        perceptual_roughness: 0.8,
+        reflectance: 0.1,
+        ..default()
+    });
+    let ring2_plane = commands
+        .spawn((
+            Mesh3d(ring2_mesh),
+            MeshMaterial3d(ring2_mat),
+            Transform::from_rotation(ring_tilt),
+        ))
+        .id();
+    commands.entity(aphora_entity).add_child(ring2_plane);
+
+    // Flying Dragons in Aphora's Atmosphere (Scaled proportionally to planet, strictly non-colliding)
+    let dragon_scene_handle = asset_server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset("models/dragon.glb"));
+    let dragon_configs = [
+        (54500.0, 0.08, 0.25, 0.0, 18.0),
+        (57000.0, -0.065, -0.35, 1.2, 24.0),
+        (60000.0, 0.075, 0.15, 2.5, 15.0),
+        (55800.0, -0.09, 0.45, 3.8, 22.0),
+        (58500.0, 0.07, -0.28, 5.1, 20.0),
+        (63000.0, -0.08, 0.32, 0.8, 16.0),
+    ];
+
+    for &(orbit_r, speed, tilt, phase, scale) in &dragon_configs {
+        let dragon_entity = commands
+            .spawn((
+                FlyingDragon {
+                    orbit_radius: orbit_r,
+                    fly_speed: speed,
+                    angle: phase,
+                    tilt,
+                    phase_offset: phase,
+                },
+                WorldAssetRoot(dragon_scene_handle.clone()),
+                Transform::from_scale(Vec3::splat(scale)),
+            ))
+            .id();
+        commands.entity(aphora_entity).add_child(dragon_entity);
+    }
+
     // ----------------------------------------------------
     // 4. INTERPLANETARY SPACE DUST PARTICLES (SPRINKLED AROUND SYSTEM)
     // ----------------------------------------------------
@@ -1371,6 +1504,7 @@ pub fn setup_loading_screen(
         "audio/engine_hum.wav",
         "audio/ambient_piano.wav",
         "models/spaceship.glb",
+        "models/dragon.glb",
         "textures/space_skybox.png",
         "textures/sun.jpg",
         "textures/mercury.jpg",
@@ -1389,6 +1523,9 @@ pub fn setup_loading_screen(
         "textures/haumea.jpg",
         "textures/makemake.jpg",
         "textures/eris.jpg",
+        "textures/aphora.png",
+        "textures/aphora_ring1.png",
+        "textures/aphora_ring2.png",
     ];
 
     loading_assets.handles.clear();
@@ -1414,7 +1551,7 @@ pub fn setup_loading_screen(
             clear_color: ClearColorConfig::Custom(Color::srgb(0.001, 0.001, 0.003)),
             ..default()
         },
-        Camera2d::default(),
+        Camera2d,
         LoadingScreenUI,
     ));
 
@@ -1554,11 +1691,11 @@ mod tests {
 
     #[test]
     fn test_initial_ship_spawn_position_facing_earth() {
-        let earth_orbit_radius = 1.000000 * AU;
+        let earth_orbit_radius = 1.0 * AU;
         let earth_angle = 0.5 * std::f32::consts::TAU;
         let earth_pos = Vec3::new(earth_orbit_radius * earth_angle.cos(), 0.0, earth_orbit_radius * earth_angle.sin());
 
-        let initial_spawn_dist = 2.200000 * AU;
+        let initial_spawn_dist = 2.2 * AU;
         let initial_spawn_pos = earth_pos.normalize() * initial_spawn_dist + Vec3::new(0.0, 150_000.0, 0.0);
         let dir_to_earth = (earth_pos - initial_spawn_pos).normalize_or_zero();
 
@@ -1576,6 +1713,23 @@ mod tests {
             (dot_to_earth - 1.0).abs() < 1e-4,
             "Ship forward vector should face Earth directly, dot product={}",
             dot_to_earth
+        );
+    }
+
+    #[test]
+    fn test_aphora_assets_validity() {
+        let aphora_tex_path = std::path::Path::new("assets/textures/aphora.png");
+        assert!(aphora_tex_path.exists(), "aphora.png texture should exist");
+        assert!(
+            std::fs::metadata(aphora_tex_path).unwrap().len() > 100_000,
+            "aphora.png should be a high-res texture file"
+        );
+
+        let dragon_model_path = std::path::Path::new("assets/models/dragon.glb");
+        assert!(dragon_model_path.exists(), "dragon.glb model file should exist");
+        assert!(
+            std::fs::metadata(dragon_model_path).unwrap().len() > 500_000,
+            "dragon.glb should be a full 3D model asset"
         );
     }
 }

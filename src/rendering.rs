@@ -1,11 +1,11 @@
 use bevy::prelude::*;
+use bevy::transform::TransformSystems;
 
 use crate::components::{
     Asteroid, Moon, PilotCamera, Planet, PlanetAreaLight, Ship, SkyboxSphere, SpaceDust, Starfield, Sun,
     SunAnimation, SunDirectionalLight,
 };
-
-use crate::resources::FlightState;
+use crate::resources::{AppState, FlightState};
 
 type NonRenderObjectFilter = (Without<Ship>, Without<PilotCamera>, Without<PlanetAreaLight>);
 type AreaLightFilter = (Without<Planet>, Without<PlanetAreaLight>);
@@ -18,9 +18,6 @@ type AsteroidRenderQueryFilter = (With<Asteroid>, Without<Sun>, Without<Planet>,
 type DustRenderQueryFilter = (With<SpaceDust>, Without<Sun>, Without<Planet>, Without<Moon>, Without<Asteroid>, Without<Starfield>, Without<SkyboxSphere>, NonRenderObjectFilter);
 type StarRenderQueryFilter = (With<Starfield>, Without<Sun>, Without<Planet>, Without<Moon>, Without<Asteroid>, Without<SpaceDust>, Without<SkyboxSphere>, NonRenderObjectFilter);
 type SkyboxRenderQueryFilter = (With<SkyboxSphere>, Without<Sun>, Without<Planet>, Without<Moon>, Without<Asteroid>, Without<SpaceDust>, Without<Starfield>, NonRenderObjectFilter);
-
-use bevy::transform::TransformSystems;
-use crate::resources::AppState;
 
 pub struct RenderingPlugin;
 
@@ -167,12 +164,12 @@ pub fn update_planet_area_lights_system(
 ) {
     for (area_light, child_of, mut light, mut transform) in &mut area_light_query {
         let parent_entity = child_of.parent();
-        let (world_pos, planet_radius, parent_rot, parent_scale) = if let Ok((planet, p_trans)) = planet_query.get(parent_entity) {
-            (planet.world_pos, planet.radius, p_trans.rotation, p_trans.scale.x)
+        let (world_pos, planet_radius, parent_rot) = if let Ok((planet, p_trans)) = planet_query.get(parent_entity) {
+            (planet.world_pos, planet.radius, p_trans.rotation)
         } else if let Ok((moon, m_trans)) = moon_query.get(parent_entity) {
-            (moon.world_pos, moon.radius, m_trans.rotation, m_trans.scale.x)
+            (moon.world_pos, moon.radius, m_trans.rotation)
         } else {
-            (area_light.destination_world_pos, area_light.planet_radius, Quat::IDENTITY, 1.0)
+            (area_light.destination_world_pos, area_light.planet_radius, Quat::IDENTITY)
         };
 
         let sun_dir_world = -world_pos.normalize_or_zero();
@@ -181,7 +178,6 @@ pub fn update_planet_area_lights_system(
         }
 
         let local_sun_dir = parent_rot.inverse() * sun_dir_world;
-        let _visual_radius = planet_radius * parent_scale;
 
         transform.translation = local_sun_dir * (planet_radius * 3.5);
 
@@ -194,7 +190,6 @@ pub fn update_planet_area_lights_system(
 pub fn update_directional_sunlight_system(
     flight_state: Res<FlightState>,
     ship_query: Query<&Transform, With<Ship>>,
-    _camera_query: Query<&Transform, (With<PilotCamera>, Without<Ship>)>,
     mut sun_light_query: Query<&mut Transform, SunLightFilter>,
 ) {
     let Ok(ship_transform) = ship_query.single() else { return; };

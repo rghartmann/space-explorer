@@ -1,15 +1,16 @@
-use bevy::input::mouse::MouseMotion;
 use bevy::ecs::message::MessageReader;
+use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 
 use crate::components::{
-    get_destination_by_key, Asteroid, AutopilotMenuContainer, AutopilotMenuItemButton, Moon, PilotCamera, Planet, Ship, Sun,
+    get_destination_by_key, Asteroid, AutopilotMenuContainer, AutopilotMenuItemButton, FlyingDragon, Moon, PilotCamera, Planet, Ship, Sun,
 };
 use crate::resources::{AppState, AutoPilotState, AutopilotMenuState, FlightState};
 
 pub const SPEED_OF_LIGHT: f32 = 299_792.47; // Speed of light in km/s (1.0c)
 pub const STANDARD_MAX_SPEED: f32 = 2_000.0;   // 2,000 km/s (10x increased non-warp impulse speed cap)
-pub const MAX_SPEED_CAP: f32 = 29_979_247.0;  // 29,979,247 km/s (100.0c FTL warp boost cap)
+pub const MAX_SPEED_CAP: f32 = 149_896_235.0; // 149,896,235 km/s (500.0c FTL warp boost cap)
+pub const DRAGON_RENDER_DISTANCE: f32 = 1_500_000.0; // Distance threshold (km) to render and animate Aphora's dragons
 
 pub struct FlightPlugin;
 
@@ -20,7 +21,7 @@ impl Plugin for FlightPlugin {
                 Update,
                 (
                     (
-                        (orbit_planets_system, orbit_moons_system, orbit_asteroids_system),
+                        (orbit_planets_system, orbit_moons_system, orbit_asteroids_system, animate_flying_dragons_system, play_dragon_animations_system),
                         autopilot_input_system,
                         autopilot_menu_button_system,
                         autopilot_pathfinding_system,
@@ -522,23 +523,23 @@ pub fn autopilot_input_system(
         menu_state.buffer_timer = 0.0;
     } else if menu_state.input_buffer.len() == 1 {
         if let Ok(num) = menu_state.input_buffer.parse::<usize>() {
-            if num == 0 || num >= 2 {
-                select_key = Some(num);
-                menu_state.input_buffer.clear();
-                menu_state.buffer_timer = 0.0;
-            } else if num == 1 {
+            if num == 1 || num == 9 {
                 if keyboard.just_pressed(KeyCode::Enter) || keyboard.just_pressed(KeyCode::Space) {
-                    select_key = Some(1);
+                    select_key = Some(num);
                     menu_state.input_buffer.clear();
                     menu_state.buffer_timer = 0.0;
                 } else {
                     menu_state.buffer_timer -= dt;
                     if menu_state.buffer_timer <= 0.0 {
-                        select_key = Some(1);
+                        select_key = Some(num);
                         menu_state.input_buffer.clear();
                         menu_state.buffer_timer = 0.0;
                     }
                 }
+            } else {
+                select_key = Some(num);
+                menu_state.input_buffer.clear();
+                menu_state.buffer_timer = 0.0;
             }
         }
     }
@@ -596,12 +597,22 @@ pub fn autopilot_menu_button_system(
                 }
             }
             Interaction::Hovered => {
-                *bg_color = BackgroundColor(Color::srgba(0.0, 0.5, 0.75, 0.65));
-                *border_color = BorderColor::all(Color::srgba(0.0, 0.9, 1.0, 0.9));
+                if item.destination_key == 99 {
+                    *bg_color = BackgroundColor(Color::srgba(0.50, 0.10, 0.75, 0.85));
+                    *border_color = BorderColor::all(Color::srgba(0.95, 0.35, 1.0, 0.95));
+                } else {
+                    *bg_color = BackgroundColor(Color::srgba(0.0, 0.5, 0.75, 0.65));
+                    *border_color = BorderColor::all(Color::srgba(0.0, 0.9, 1.0, 0.9));
+                }
             }
             Interaction::None => {
-                *bg_color = BackgroundColor(Color::srgba(0.05, 0.1, 0.18, 0.65));
-                *border_color = BorderColor::all(Color::srgba(0.0, 0.7, 0.9, 0.25));
+                if item.destination_key == 99 {
+                    *bg_color = BackgroundColor(Color::srgba(0.25, 0.05, 0.40, 0.85));
+                    *border_color = BorderColor::all(Color::srgba(0.85, 0.25, 1.0, 0.85));
+                } else {
+                    *bg_color = BackgroundColor(Color::srgba(0.05, 0.1, 0.18, 0.65));
+                    *border_color = BorderColor::all(Color::srgba(0.0, 0.7, 0.9, 0.25));
+                }
             }
         }
     }
@@ -1016,6 +1027,76 @@ pub fn orbit_asteroids_system(time: Res<Time>, mut query: Query<(&Asteroid, &mut
     }
 }
 
+pub fn animate_flying_dragons_system(
+    time: Res<Time>,
+    flight_state: Res<FlightState>,
+    planet_query: Query<&Planet>,
+    mut query: Query<(&mut FlyingDragon, &mut Transform, &mut Visibility)>,
+) {
+    // Find Aphora's world position
+    let mut aphora_pos = None;
+    for planet in &planet_query {
+        if planet.index == 99 || planet.name == "Aphora" {
+            aphora_pos = Some(planet.world_pos);
+            break;
+        }
+    }
+
+    let Some(aphora_pos) = aphora_pos else { return; };
+    let dist_to_aphora = flight_state.world_pos.distance(aphora_pos);
+
+    // CPU Optimization: If spaceship is far away from Aphora, hide dragons and skip transform math
+    if dist_to_aphora > DRAGON_RENDER_DISTANCE {
+        for (_, _, mut vis) in &mut query {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+        }
+        return;
+    }
+
+    let dt = time.delta_secs();
+    let t = time.elapsed_secs();
+
+    for (mut dragon, mut transform, mut vis) in &mut query {
+        if *vis != Visibility::Inherited {
+            *vis = Visibility::Inherited;
+        }
+
+        dragon.angle += dragon.fly_speed * dt;
+        // Bounded orbit radius to strictly prevent surface collision (Aphora radius = 52,000 km)
+        let r = (dragon.orbit_radius + (t * 1.5 + dragon.phase_offset).sin() * 600.0).max(53_800.0);
+        let base_x = r * dragon.angle.cos();
+        let base_z = r * dragon.angle.sin();
+        let base_y = (t * 1.2 + dragon.phase_offset).sin() * 800.0 + (dragon.angle * 2.0).cos() * 500.0;
+
+        let tilt_rot = Quat::from_rotation_z(dragon.tilt);
+        let raw_pos = Vec3::new(base_x, base_y, base_z);
+        let final_pos = tilt_rot * raw_pos;
+
+        let base_tangent = Vec3::new(
+            -r * dragon.angle.sin(),
+            (t * 1.2 + dragon.phase_offset).cos() * 1000.0,
+            r * dragon.angle.cos(),
+        )
+        .normalize_or_zero();
+        let final_tangent = tilt_rot * base_tangent;
+
+        let rot = Quat::from_rotation_arc(Vec3::NEG_Z, final_tangent);
+
+        transform.translation = final_pos;
+        transform.rotation = rot;
+    }
+}
+
+pub fn play_dragon_animations_system(
+    mut player_query: Query<&mut AnimationPlayer, Added<AnimationPlayer>>,
+) {
+    for mut player in &mut player_query {
+        player.play(AnimationNodeIndex::new(0)).repeat();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1073,14 +1154,18 @@ mod tests {
         let mut app = App::new();
         app.init_resource::<Time>();
 
-        let mut flight_state = FlightState::default();
-        flight_state.world_pos = Vec3::new(-100_000.0, 0.0, 0.0);
+        let flight_state = FlightState {
+            world_pos: Vec3::new(-100_000.0, 0.0, 0.0),
+            ..Default::default()
+        };
         app.insert_resource(flight_state);
 
-        let mut autopilot = AutoPilotState::default();
-        autopilot.active = true;
-        autopilot.destination_index = Some(2);
-        autopilot.destination_name = "TargetPlanet";
+        let autopilot = AutoPilotState {
+            active: true,
+            destination_index: Some(2),
+            destination_name: "TargetPlanet",
+            ..Default::default()
+        };
         app.insert_resource(autopilot);
 
         app.world_mut().spawn(Planet {
@@ -1124,10 +1209,12 @@ mod tests {
         app.init_resource::<ButtonInput<KeyCode>>();
         app.init_resource::<FlightState>();
 
-        let mut autopilot = AutoPilotState::default();
-        autopilot.active = true;
-        autopilot.destination_index = Some(3);
-        autopilot.destination_name = "Earth";
+        let autopilot = AutoPilotState {
+            active: true,
+            destination_index: Some(3),
+            destination_name: "Earth",
+            ..Default::default()
+        };
         app.insert_resource(autopilot);
 
         app.world_mut().spawn((Ship, Transform::IDENTITY));
@@ -1165,14 +1252,18 @@ mod tests {
         let arrival_boundary = compute_orbit_boundary(earth_radius);
         let start_pos = earth_pos + Vec3::new(arrival_boundary + 50_000.0, 0.0, 0.0);
 
-        let mut flight_state = FlightState::default();
-        flight_state.world_pos = start_pos;
+        let flight_state = FlightState {
+            world_pos: start_pos,
+            ..Default::default()
+        };
         app.insert_resource(flight_state);
 
-        let mut autopilot = AutoPilotState::default();
-        autopilot.active = true;
-        autopilot.destination_index = Some(3);
-        autopilot.destination_name = "Earth";
+        let autopilot = AutoPilotState {
+            active: true,
+            destination_index: Some(3),
+            destination_name: "Earth",
+            ..Default::default()
+        };
         app.insert_resource(autopilot);
 
         app.world_mut().spawn(Planet {
@@ -1245,14 +1336,18 @@ mod tests {
             let boundary = compute_orbit_boundary(radius);
             let start_pos = body_pos + Vec3::new(boundary + 20_000.0, 0.0, 0.0);
 
-            let mut flight_state = FlightState::default();
-            flight_state.world_pos = start_pos;
+            let flight_state = FlightState {
+                world_pos: start_pos,
+                ..Default::default()
+            };
             app.insert_resource(flight_state);
 
-            let mut autopilot = AutoPilotState::default();
-            autopilot.active = true;
-            autopilot.destination_index = Some(idx);
-            autopilot.destination_name = name;
+            let autopilot = AutoPilotState {
+                active: true,
+                destination_index: Some(idx),
+                destination_name: name,
+                ..Default::default()
+            };
             app.insert_resource(autopilot);
 
             app.world_mut().spawn(Planet {
@@ -1302,15 +1397,19 @@ mod tests {
         let obstacle_pos = Vec3::new(1000.0, 0.0, 0.0);
         let obstacle_radius = 500.0;
 
-        let mut flight_state = FlightState::default();
-        flight_state.previous_pos = obstacle_pos + Vec3::new(505.0, 0.0, 0.0);
-        flight_state.world_pos = obstacle_pos + Vec3::new(501.0, 0.0, 0.0);
+        let flight_state = FlightState {
+            previous_pos: obstacle_pos + Vec3::new(505.0, 0.0, 0.0),
+            world_pos: obstacle_pos + Vec3::new(501.0, 0.0, 0.0),
+            ..Default::default()
+        };
         app.insert_resource(flight_state);
 
-        let mut autopilot = AutoPilotState::default();
-        autopilot.active = true;
-        autopilot.destination_index = Some(2);
-        autopilot.destination_name = "TargetPlanet";
+        let autopilot = AutoPilotState {
+            active: true,
+            destination_index: Some(2),
+            destination_name: "TargetPlanet",
+            ..Default::default()
+        };
         app.insert_resource(autopilot);
 
         app.world_mut().spawn(Planet {
@@ -1371,16 +1470,20 @@ mod tests {
         // Start 50 million km away from Mars with initial high velocity (simulating FTL warp)
         let start_pos = mars_pos + Vec3::new(50_000_000.0, 0.0, 0.0);
 
-        let mut flight_state = FlightState::default();
-        flight_state.world_pos = start_pos;
-        flight_state.velocity = Vec3::new(-10_000_000.0, 0.0, 0.0); // Extreme FTL speed towards Mars
-        flight_state.boost_mode = true;
+        let flight_state = FlightState {
+            world_pos: start_pos,
+            velocity: Vec3::new(-10_000_000.0, 0.0, 0.0),
+            boost_mode: true,
+            ..Default::default()
+        };
         app.insert_resource(flight_state);
 
-        let mut autopilot = AutoPilotState::default();
-        autopilot.active = true;
-        autopilot.destination_index = Some(4);
-        autopilot.destination_name = "Mars";
+        let autopilot = AutoPilotState {
+            active: true,
+            destination_index: Some(4),
+            destination_name: "Mars",
+            ..Default::default()
+        };
         app.insert_resource(autopilot);
 
         app.world_mut().spawn(Planet {
@@ -1480,8 +1583,10 @@ mod tests {
         app.init_resource::<FlightState>();
         app.init_resource::<AutoPilotState>();
 
-        let mut menu_state = AutopilotMenuState::default();
-        menu_state.visible = true;
+        let menu_state = AutopilotMenuState {
+            visible: true,
+            ..Default::default()
+        };
         app.insert_resource(menu_state);
 
         app.world_mut().spawn(Planet {
@@ -1514,6 +1619,27 @@ mod tests {
 
         let vis = app.world().entity(menu_entity).get::<Visibility>().unwrap();
         assert_eq!(*vis, Visibility::Hidden, "Menu container visibility should be Hidden");
+    }
+
+    #[test]
+    fn test_aphora_key_99_autopilot_destination() {
+        use crate::components::CelestialDestinationType;
+        let dest = get_destination_by_key(99);
+        assert!(dest.is_some(), "Key 99 should exist in AUTOPILOT_DESTINATIONS");
+        let dest = dest.unwrap();
+        assert_eq!(dest.name, "Aphora");
+        assert_eq!(dest.dest_type, CelestialDestinationType::Planet(99));
+    }
+
+    #[test]
+    fn test_max_speed_500x_c_and_dragon_distance_rendering() {
+        assert!(
+            (MAX_SPEED_CAP - (500.0 * SPEED_OF_LIGHT)).abs() < 1000.0,
+            "MAX_SPEED_CAP should be 500x c, found MAX_SPEED_CAP={}, 500c={}",
+            MAX_SPEED_CAP,
+            500.0 * SPEED_OF_LIGHT
+        );
+        assert_eq!(DRAGON_RENDER_DISTANCE, 1_500_000.0);
     }
 }
 
