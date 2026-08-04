@@ -67,5 +67,12 @@ impl AutoPilotState {
     }
 }
 
+#[derive(Resource, Default)]
+pub struct AutopilotMenuState {
+    pub visible: bool,
+    pub input_buffer: String,
+    pub buffer_timer: f32,
+}
+
 
 

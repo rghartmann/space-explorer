@@ -68,6 +68,7 @@ use crate::flight::SPEED_OF_LIGHT;
 pub fn update_hud_system(
     autopilot: Res<AutoPilotState>,
     flight_state: Res<FlightState>,
+    sun_query: Query<&Sun>,
     planet_query: Query<&Planet>,
     moon_query: Query<&Moon>,
     mut text_query: Query<&mut Text, With<AutoPilotHudText>>,
@@ -127,22 +128,14 @@ pub fn update_hud_system(
                 let mut dist_str = String::from("CALCULATING...");
                 let mut dest_world_pos = None;
 
-                if destination_idx == 0 {
-                    dest_world_pos = Some(Vec3::ZERO);
-                } else if destination_idx == 100 {
-                    for moon in &moon_query {
-                        if moon.name == autopilot.destination_name {
-                            dest_world_pos = Some(moon.world_pos);
-                            break;
-                        }
-                    }
-                } else {
-                    for planet in &planet_query {
-                        if planet.index == destination_idx {
-                            dest_world_pos = Some(planet.world_pos);
-                            break;
-                        }
-                    }
+                if let Some((pos, _)) = crate::flight::get_celestial_target_info(
+                    destination_idx,
+                    autopilot.destination_name,
+                    &sun_query,
+                    &planet_query,
+                    &moon_query,
+                ) {
+                    dest_world_pos = Some(pos);
                 }
 
                 if let Some(dest_pos) = dest_world_pos {
@@ -201,7 +194,7 @@ pub fn update_hud_system(
             let mode_hint = if flight_state.boost_mode {
                 "BOOST MODE | PRESS SPACE AGAIN TO BRAKE QUICKLY"
             } else {
-                "W/S: ACCEL/DECEL | MOUSE/ARROWS/A-D: PITCH/YAW | Q-E/Z-X: ROLL | SPACE: WARP BOOST | [0-9/C/H/K/E/M]: AUTOPILOT | SPACE: CANCEL AP"
+                "W/S: ACCEL/DECEL | MOUSE/ARROWS/A-D: PITCH/YAW | Q-E/Z-X: ROLL | SPACE: WARP BOOST | [M]: AUTOPILOT MENU | SPACE: CANCEL AP"
             };
             **text = format!(
                 "FLIGHT STATUS: MANUAL CONTROL | SPEED: {} | {}",

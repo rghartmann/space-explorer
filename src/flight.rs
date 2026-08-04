@@ -2,8 +2,10 @@ use bevy::input::mouse::MouseMotion;
 use bevy::ecs::message::MessageReader;
 use bevy::prelude::*;
 
-use crate::components::{Asteroid, Moon, PilotCamera, Planet, Ship, Sun};
-use crate::resources::{AppState, AutoPilotState, FlightState};
+use crate::components::{
+    get_destination_by_key, Asteroid, AutopilotMenuContainer, AutopilotMenuItemButton, Moon, PilotCamera, Planet, Ship, Sun,
+};
+use crate::resources::{AppState, AutoPilotState, AutopilotMenuState, FlightState};
 
 pub const SPEED_OF_LIGHT: f32 = 299_792.47; // Speed of light in km/s (1.0c)
 pub const STANDARD_MAX_SPEED: f32 = 2_000.0;   // 2,000 km/s (10x increased non-warp impulse speed cap)
@@ -13,23 +15,25 @@ pub struct FlightPlugin;
 
 impl Plugin for FlightPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (
+        app.init_resource::<AutopilotMenuState>()
+            .add_systems(
+                Update,
                 (
-                    (orbit_planets_system, orbit_moons_system, orbit_asteroids_system),
-                    autopilot_input_system,
-                    autopilot_pathfinding_system,
-                    autopilot_flight_system,
-                    ship_flight_system,
-                    celestial_collision_system,
-                    pilot_freelook_system,
+                    (
+                        (orbit_planets_system, orbit_moons_system, orbit_asteroids_system),
+                        autopilot_input_system,
+                        autopilot_menu_button_system,
+                        autopilot_pathfinding_system,
+                        autopilot_flight_system,
+                        ship_flight_system,
+                        celestial_collision_system,
+                        pilot_freelook_system,
+                    )
+                        .chain(),
+                    update_cursor_system,
                 )
-                    .chain(),
-                hide_cursor_system,
-            )
-                .run_if(in_state(AppState::InGame)),
-        );
+                    .run_if(in_state(AppState::InGame)),
+            );
     }
 }
 
@@ -60,27 +64,24 @@ pub fn get_celestial_target_full_info(
     planet_query: &Query<&Planet>,
     moon_query: &Query<&Moon>,
 ) -> Option<(Vec3, f32, &'static str, Option<usize>)> {
-    if destination_idx == 0 {
+    if destination_name == "Sun" || destination_idx == 0 {
         let sun = sun_query.iter().next()?;
         return Some((Vec3::ZERO, sun.radius, "Sun", None));
     }
 
-    if destination_idx == 100 {
-        for moon in moon_query {
-            if moon.name == destination_name {
-                return Some((
-                    moon.world_pos,
-                    moon.radius,
-                    moon.name,
-                    Some(moon.parent_index),
-                ));
-            }
+    for moon in moon_query {
+        if moon.name == destination_name {
+            return Some((
+                moon.world_pos,
+                moon.radius,
+                moon.name,
+                Some(moon.parent_index),
+            ));
         }
-        return None;
     }
 
     for planet in planet_query {
-        if planet.index == destination_idx {
+        if planet.name == destination_name || planet.index == destination_idx {
             return Some((
                 planet.world_pos,
                 planet.radius,
@@ -110,9 +111,17 @@ pub fn get_celestial_target_info(
     .map(|(pos, rad, _, _)| (pos, rad))
 }
 
-pub fn hide_cursor_system(mut cursor_query: Query<&mut bevy::window::CursorOptions, With<Window>>) {
+pub fn update_cursor_system(
+    menu_state: Res<AutopilotMenuState>,
+    mut cursor_query: Query<&mut bevy::window::CursorOptions, With<Window>>,
+) {
     for mut cursor in &mut cursor_query {
-        if cursor.visible {
+        if menu_state.visible {
+            if !cursor.visible {
+                cursor.visible = true;
+                cursor.grab_mode = bevy::window::CursorGrabMode::None;
+            }
+        } else if cursor.visible {
             cursor.visible = false;
             cursor.grab_mode = bevy::window::CursorGrabMode::Locked;
         }
@@ -345,107 +354,255 @@ pub fn ship_flight_system(
     ship_transform.translation = Vec3::ZERO;
 }
 
+pub fn trigger_autopilot_destination(
+    dest_key: usize,
+    dest_name: &'static str,
+    autopilot: &mut AutoPilotState,
+    flight_state: &FlightState,
+    sun_query: &Query<&Sun>,
+    planet_query: &Query<&Planet>,
+    moon_query: &Query<&Moon>,
+) {
+    let mut target_pos = Vec3::ZERO;
+    if let Some((pos, _)) = get_celestial_target_info(
+        dest_key,
+        dest_name,
+        sun_query,
+        planet_query,
+        moon_query,
+    ) {
+        target_pos = pos;
+    }
+
+    let start_pos = flight_state.world_pos;
+    let to_dest = target_pos - start_pos;
+    let dist = to_dest.length();
+    let mut waypoint = None;
+
+    if dist > 100.0 {
+        let line_dir = to_dest / dist;
+        let mut closest_obstacle_dist = f32::MAX;
+        let mut chosen_waypoint = None;
+
+        let sun_radius = sun_query.iter().next().map(|s| s.radius).unwrap_or(696340.0);
+
+        if dest_name != "Sun" && dest_key != 0 {
+            let to_sun = -start_pos;
+            let proj = to_sun.dot(line_dir);
+            if proj > 1000.0 && proj < dist - 1000.0 {
+                let closest_pt = start_pos + line_dir * proj;
+                let clearance = closest_pt.length();
+                let min_clearance = (sun_radius * 2.8).max(250_000.0);
+                if clearance < min_clearance {
+                    let perp = Vec3::Y.cross(line_dir).normalize_or_zero();
+                    let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
+                    let wp = closest_pt + bypass_dir * (min_clearance * 1.5);
+                    let d = start_pos.length();
+                    if d < closest_obstacle_dist {
+                        closest_obstacle_dist = d;
+                        chosen_waypoint = Some(wp);
+                    }
+                }
+            }
+        }
+
+        for planet in planet_query {
+            if planet.name != dest_name {
+                let to_planet = planet.world_pos - start_pos;
+                let proj = to_planet.dot(line_dir);
+                if proj > 1000.0 && proj < dist - 1000.0 {
+                    let closest_pt = start_pos + line_dir * proj;
+                    let clearance = (closest_pt - planet.world_pos).length();
+                    let min_clearance = (planet.radius * 2.5).max(15_000.0);
+                    if clearance < min_clearance {
+                        let perp = (closest_pt - planet.world_pos).normalize_or_zero();
+                        let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
+                        let wp = planet.world_pos + bypass_dir * (min_clearance * 1.6);
+                        let d = start_pos.distance(planet.world_pos);
+                        if d < closest_obstacle_dist {
+                            closest_obstacle_dist = d;
+                            chosen_waypoint = Some(wp);
+                        }
+                    }
+                }
+            }
+        }
+
+        waypoint = chosen_waypoint;
+    }
+
+    autopilot.active = true;
+    autopilot.arrived = false;
+    autopilot.destination_index = Some(dest_key);
+    autopilot.destination_name = dest_name;
+    autopilot.prev_destination_pos = None;
+    autopilot.current_waypoint = waypoint;
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn autopilot_input_system(
+    time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
+    mut menu_state: ResMut<AutopilotMenuState>,
     mut autopilot: ResMut<AutoPilotState>,
     flight_state: Res<FlightState>,
+    sun_query: Query<&Sun>,
     planet_query: Query<&Planet>,
     moon_query: Query<&Moon>,
-    sun_query: Query<&Sun>,
+    mut menu_container_query: Query<&mut Visibility, With<AutopilotMenuContainer>>,
 ) {
-    let planet_keys = [
-        (KeyCode::Digit0, 0, "Sun"),
-        (KeyCode::Digit1, 1, "Mercury"),
-        (KeyCode::Digit2, 2, "Venus"),
-        (KeyCode::Digit3, 3, "Earth"),
-        (KeyCode::Digit4, 4, "Mars"),
-        (KeyCode::Digit5, 5, "Jupiter"),
-        (KeyCode::Digit6, 6, "Saturn"),
-        (KeyCode::Digit7, 7, "Uranus"),
-        (KeyCode::Digit8, 8, "Neptune"),
-        (KeyCode::Digit9, 9, "Pluto"),
-        (KeyCode::KeyC, 10, "Ceres"),
-        (KeyCode::KeyH, 11, "Haumea"),
-        (KeyCode::KeyK, 12, "Makemake"),
-        (KeyCode::KeyE, 13, "Eris"),
-        (KeyCode::KeyM, 100, "Moon"),
+    let dt = time.delta_secs();
+
+    // Toggle menu with 'M' key
+    if keyboard.just_pressed(KeyCode::KeyM) {
+        menu_state.visible = !menu_state.visible;
+        menu_state.input_buffer.clear();
+        menu_state.buffer_timer = 0.0;
+        let new_vis = if menu_state.visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        for mut vis in &mut menu_container_query {
+            *vis = new_vis;
+        }
+        return;
+    }
+
+    // Only process numeric destination selection when menu is visible
+    if !menu_state.visible {
+        return;
+    }
+
+    let digit_keys = [
+        (KeyCode::Digit0, '0'),
+        (KeyCode::Digit1, '1'),
+        (KeyCode::Digit2, '2'),
+        (KeyCode::Digit3, '3'),
+        (KeyCode::Digit4, '4'),
+        (KeyCode::Digit5, '5'),
+        (KeyCode::Digit6, '6'),
+        (KeyCode::Digit7, '7'),
+        (KeyCode::Digit8, '8'),
+        (KeyCode::Digit9, '9'),
+        (KeyCode::Numpad0, '0'),
+        (KeyCode::Numpad1, '1'),
+        (KeyCode::Numpad2, '2'),
+        (KeyCode::Numpad3, '3'),
+        (KeyCode::Numpad4, '4'),
+        (KeyCode::Numpad5, '5'),
+        (KeyCode::Numpad6, '6'),
+        (KeyCode::Numpad7, '7'),
+        (KeyCode::Numpad8, '8'),
+        (KeyCode::Numpad9, '9'),
     ];
 
-    for (key, idx, name) in planet_keys {
+    let mut pressed_digit = None;
+    for (key, digit) in digit_keys {
         if keyboard.just_pressed(key) {
-            let mut target_pos = Vec3::ZERO;
-            if let Some((pos, _)) = get_celestial_target_info(
-                idx,
-                name,
+            pressed_digit = Some(digit);
+            break;
+        }
+    }
+
+    if let Some(digit) = pressed_digit {
+        menu_state.input_buffer.push(digit);
+        menu_state.buffer_timer = 0.45;
+    }
+
+    let mut select_key = None;
+
+    if menu_state.input_buffer.len() >= 2 {
+        if let Ok(num) = menu_state.input_buffer.parse::<usize>() {
+            if num <= 99 {
+                select_key = Some(num);
+            }
+        }
+        menu_state.input_buffer.clear();
+        menu_state.buffer_timer = 0.0;
+    } else if menu_state.input_buffer.len() == 1 {
+        if let Ok(num) = menu_state.input_buffer.parse::<usize>() {
+            if num == 0 || num >= 2 {
+                select_key = Some(num);
+                menu_state.input_buffer.clear();
+                menu_state.buffer_timer = 0.0;
+            } else if num == 1 {
+                if keyboard.just_pressed(KeyCode::Enter) || keyboard.just_pressed(KeyCode::Space) {
+                    select_key = Some(1);
+                    menu_state.input_buffer.clear();
+                    menu_state.buffer_timer = 0.0;
+                } else {
+                    menu_state.buffer_timer -= dt;
+                    if menu_state.buffer_timer <= 0.0 {
+                        select_key = Some(1);
+                        menu_state.input_buffer.clear();
+                        menu_state.buffer_timer = 0.0;
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(target_key) = select_key {
+        if let Some(dest) = get_destination_by_key(target_key) {
+            trigger_autopilot_destination(
+                dest.key_num,
+                dest.name,
+                &mut autopilot,
+                &flight_state,
                 &sun_query,
                 &planet_query,
                 &moon_query,
-            ) {
-                target_pos = pos;
+            );
+            menu_state.visible = false;
+            for mut vis in &mut menu_container_query {
+                *vis = Visibility::Hidden;
             }
+        }
+    }
+}
 
-            let start_pos = flight_state.world_pos;
-            let to_dest = target_pos - start_pos;
-            let dist = to_dest.length();
-            let mut waypoint = None;
-
-            if dist > 100.0 {
-                let line_dir = to_dest / dist;
-                let mut closest_obstacle_dist = f32::MAX;
-                let mut chosen_waypoint = None;
-
-                let sun_radius = sun_query.iter().next().map(|s| s.radius).unwrap_or(696340.0);
-
-                if idx != 0 {
-                    let to_sun = -start_pos;
-                    let proj = to_sun.dot(line_dir);
-                    if proj > 1000.0 && proj < dist - 1000.0 {
-                        let closest_pt = start_pos + line_dir * proj;
-                        let clearance = closest_pt.length();
-                        let min_clearance = (sun_radius * 2.8).max(250_000.0);
-                        if clearance < min_clearance {
-                            let perp = Vec3::Y.cross(line_dir).normalize_or_zero();
-                            let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
-                            let wp = closest_pt + bypass_dir * (min_clearance * 1.5);
-                            let d = start_pos.length();
-                            if d < closest_obstacle_dist {
-                                closest_obstacle_dist = d;
-                                chosen_waypoint = Some(wp);
-                            }
-                        }
-                    }
+#[allow(clippy::too_many_arguments)]
+pub fn autopilot_menu_button_system(
+    mut interaction_query: Query<
+        (&Interaction, &AutopilotMenuItemButton, &mut BackgroundColor, &mut BorderColor),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut menu_state: ResMut<AutopilotMenuState>,
+    mut autopilot: ResMut<AutoPilotState>,
+    flight_state: Res<FlightState>,
+    sun_query: Query<&Sun>,
+    planet_query: Query<&Planet>,
+    moon_query: Query<&Moon>,
+    mut menu_container_query: Query<&mut Visibility, With<AutopilotMenuContainer>>,
+) {
+    for (interaction, item, mut bg_color, mut border_color) in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => {
+                trigger_autopilot_destination(
+                    item.destination_key,
+                    item.destination_name,
+                    &mut autopilot,
+                    &flight_state,
+                    &sun_query,
+                    &planet_query,
+                    &moon_query,
+                );
+                menu_state.visible = false;
+                menu_state.input_buffer.clear();
+                menu_state.buffer_timer = 0.0;
+                for mut vis in &mut menu_container_query {
+                    *vis = Visibility::Hidden;
                 }
-
-                for planet in &planet_query {
-                    if idx != planet.index {
-                        let to_planet = planet.world_pos - start_pos;
-                        let proj = to_planet.dot(line_dir);
-                        if proj > 1000.0 && proj < dist - 1000.0 {
-                            let closest_pt = start_pos + line_dir * proj;
-                            let clearance = (closest_pt - planet.world_pos).length();
-                            let min_clearance = (planet.radius * 2.5).max(15_000.0);
-                            if clearance < min_clearance {
-                                let perp = (closest_pt - planet.world_pos).normalize_or_zero();
-                                let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
-                                let wp = planet.world_pos + bypass_dir * (min_clearance * 1.6);
-                                let d = start_pos.distance(planet.world_pos);
-                                if d < closest_obstacle_dist {
-                                    closest_obstacle_dist = d;
-                                    chosen_waypoint = Some(wp);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                waypoint = chosen_waypoint;
             }
-
-            autopilot.active = true;
-            autopilot.destination_index = Some(idx);
-            autopilot.destination_name = name;
-            autopilot.prev_destination_pos = None;
-            autopilot.current_waypoint = waypoint;
+            Interaction::Hovered => {
+                *bg_color = BackgroundColor(Color::srgba(0.0, 0.5, 0.75, 0.65));
+                *border_color = BorderColor::all(Color::srgba(0.0, 0.9, 1.0, 0.9));
+            }
+            Interaction::None => {
+                *bg_color = BackgroundColor(Color::srgba(0.05, 0.1, 0.18, 0.65));
+                *border_color = BorderColor::all(Color::srgba(0.0, 0.7, 0.9, 0.25));
+            }
         }
     }
 }
@@ -1279,5 +1436,84 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_autopilot_menu_toggle_with_m_key() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<FlightState>();
+        app.init_resource::<AutoPilotState>();
+        app.init_resource::<AutopilotMenuState>();
+
+        let menu_entity = app.world_mut().spawn((AutopilotMenuContainer, Visibility::Hidden)).id();
+
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        keyboard.press(KeyCode::KeyM);
+        app.insert_resource(keyboard);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(autopilot_input_system);
+        schedule.run(app.world_mut());
+
+        let menu_state = app.world().resource::<AutopilotMenuState>();
+        assert!(menu_state.visible, "Pressing M should open the autopilot menu");
+
+        let vis = app.world().entity(menu_entity).get::<Visibility>().unwrap();
+        assert_eq!(*vis, Visibility::Inherited, "Menu container visibility should update to Inherited");
+
+        let mut keyboard_m_again = ButtonInput::<KeyCode>::default();
+        keyboard_m_again.press(KeyCode::KeyM);
+        app.insert_resource(keyboard_m_again);
+        schedule.run(app.world_mut());
+
+        let menu_state_closed = app.world().resource::<AutopilotMenuState>();
+        assert!(!menu_state_closed.visible, "Pressing M again should close the autopilot menu");
+    }
+
+    #[test]
+    fn test_autopilot_menu_numeric_key_selection() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<FlightState>();
+        app.init_resource::<AutoPilotState>();
+
+        let mut menu_state = AutopilotMenuState::default();
+        menu_state.visible = true;
+        app.insert_resource(menu_state);
+
+        app.world_mut().spawn(Planet {
+            index: 3,
+            name: "Earth",
+            radius: 6371.0,
+            orbit_radius: 149_597_870.7,
+            orbit_speed: 0.1,
+            rotation_speed: 0.01,
+            orbit_angle: 0.0,
+            world_pos: Vec3::ZERO,
+        });
+
+        let menu_entity = app.world_mut().spawn((AutopilotMenuContainer, Visibility::Inherited)).id();
+
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        keyboard.press(KeyCode::Digit3);
+        app.insert_resource(keyboard);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(autopilot_input_system);
+        schedule.run(app.world_mut());
+
+        let ap = app.world().resource::<AutoPilotState>();
+        assert!(ap.active, "Choosing a destination via numeric key should engage autopilot");
+        assert_eq!(ap.destination_name, "Earth");
+
+        let updated_menu_state = app.world().resource::<AutopilotMenuState>();
+        assert!(!updated_menu_state.visible, "Choosing a destination must hide the menu");
+
+        let vis = app.world().entity(menu_entity).get::<Visibility>().unwrap();
+        assert_eq!(*vis, Visibility::Hidden, "Menu container visibility should be Hidden");
+    }
 }
 

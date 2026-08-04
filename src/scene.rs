@@ -49,16 +49,7 @@ pub fn setup_scene(
         ))
         .with_children(|parent| {
             parent.spawn((
-                Text::new("AUTOPILOT DESTINATIONS: [0] Sun | [1] Mercury | [2] Venus | [3] Earth | [M] Moon | [4] Mars | [5] Jupiter | [6] Saturn | [7] Uranus | [8] Neptune | [9] Pluto | [C] Ceres | [H] Haumea | [K] Makemake | [E] Eris"),
-                TextFont {
-                    font_size: 12.0.into(),
-                    ..default()
-                },
-                TextColor(Color::srgb(0.0, 0.88, 1.0)),
-            ));
-
-            parent.spawn((
-                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel - Cap 2,000 km/s) | MOUSE / ARROWS / A-D (Pitch/Yaw) | Q-E / Z-X (Roll) | SPACE (Warp 100x c / Stop Autopilot) | ESC (Exit)"),
+                Text::new("FLIGHT CONTROLS: W/S (Accel/Decel) | MOUSE / ARROWS / A-D (Pitch/Yaw) | Q-E / Z-X (Roll) | SPACE (Warp Boost) | M (Autopilot Menu) | ESC (Exit)"),
                 TextFont {
                     font_size: 11.5.into(),
                     ..default()
@@ -68,7 +59,7 @@ pub fn setup_scene(
 
             parent.spawn((
                 AutoPilotHudText,
-                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [0-9/C/H/K/E/M] TO ENGAGE AUTOPILOT | PRESS SPACE TO STOP AUTOPILOT"),
+                Text::new("FLIGHT STATUS: MANUAL CONTROL | SPEED: 0 km/s | PRESS [M] FOR AUTOPILOT MENU | PRESS SPACE TO CANCEL AP"),
                 TextFont {
                     font_size: 13.0.into(),
                     ..default()
@@ -120,35 +111,104 @@ pub fn setup_scene(
             ));
         });
 
-    // 2D NAVIGATION LABELS FOR CELESTIAL BODIES IN THE DISTANCE
-    let labels_info = [
-        ("[0] ", "Sun", CelestialDestinationType::Sun),
-        ("[1] ", "Mercury", CelestialDestinationType::Planet(1)),
-        ("[2] ", "Venus", CelestialDestinationType::Planet(2)),
-        ("[3] ", "Earth", CelestialDestinationType::Planet(3)),
-        ("[M] ", "Moon", CelestialDestinationType::Moon("Moon")),
-        ("[4] ", "Mars", CelestialDestinationType::Planet(4)),
-        ("[C] ", "Ceres", CelestialDestinationType::Planet(10)),
-        ("[5] ", "Jupiter", CelestialDestinationType::Planet(5)),
-        ("", "Io", CelestialDestinationType::Moon("Io")),
-        ("", "Europa", CelestialDestinationType::Moon("Europa")),
-        ("[6] ", "Saturn", CelestialDestinationType::Planet(6)),
-        ("[7] ", "Uranus", CelestialDestinationType::Planet(7)),
-        ("[8] ", "Neptune", CelestialDestinationType::Planet(8)),
-        ("[9] ", "Pluto", CelestialDestinationType::Planet(9)),
-        ("", "Charon", CelestialDestinationType::Moon("Charon")),
-        ("[H] ", "Haumea", CelestialDestinationType::Planet(11)),
-        ("[K] ", "Makemake", CelestialDestinationType::Planet(12)),
-        ("[E] ", "Eris", CelestialDestinationType::Planet(13)),
-    ];
+    // AUTOPILOT MENU UI (Appears vertically on the left-hand side when 'M' is pressed)
+    commands
+        .spawn((
+            AutopilotMenuContainer,
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(75.0),
+                left: Val::Px(16.0),
+                padding: UiRect::all(Val::Px(12.0)),
+                border: UiRect::all(Val::Px(1.5)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(3.0),
+                max_height: Val::Percent(85.0),
+                overflow: Overflow::clip_y(),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.02, 0.05, 0.12, 0.92)),
+            BorderColor::all(Color::srgba(0.0, 0.85, 1.0, 0.7)),
+            GlobalZIndex(30),
+            Visibility::Hidden,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("AUTOPILOT NAV MENU [M]"),
+                TextFont {
+                    font_size: 13.5.into(),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.0, 0.95, 1.0)),
+            ));
+            parent.spawn((
+                Text::new("Press numeric key (0-17) or click:"),
+                TextFont {
+                    font_size: 10.5.into(),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.65, 0.8, 0.9)),
+            ));
 
-    for (prefix, name, destination_type) in labels_info {
+            parent.spawn((
+                Node {
+                    height: Val::Px(1.0),
+                    width: Val::Percent(100.0),
+                    margin: UiRect::vertical(Val::Px(4.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.85, 1.0, 0.35)),
+            ));
+
+            for dest in AUTOPILOT_DESTINATIONS {
+                parent
+                    .spawn((
+                        Button,
+                        AutopilotMenuItemButton {
+                            destination_key: dest.key_num,
+                            destination_name: dest.name,
+                        },
+                        Node {
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                            flex_direction: FlexDirection::Row,
+                            align_items: AlignItems::Center,
+                            column_gap: Val::Px(8.0),
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.05, 0.1, 0.18, 0.65)),
+                        BorderColor::all(Color::srgba(0.0, 0.7, 0.9, 0.25)),
+                    ))
+                    .with_children(|row| {
+                        row.spawn((
+                            Text::new(format!("[{:>2}]", dest.key_num)),
+                            TextFont {
+                                font_size: 11.0.into(),
+                                ..default()
+                            },
+                            TextColor(Color::srgb(1.0, 0.8, 0.2)),
+                        ));
+                        row.spawn((
+                            Text::new(dest.name.to_uppercase()),
+                            TextFont {
+                                font_size: 11.0.into(),
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.9, 0.95, 1.0)),
+                        ));
+                    });
+            }
+        });
+
+    // 2D NAVIGATION LABELS FOR CELESTIAL BODIES IN THE DISTANCE
+    for dest in AUTOPILOT_DESTINATIONS {
+        let key_prefix = format!("[{}] ", dest.key_num);
         commands
             .spawn((
                 CelestialLabel {
-                    name,
-                    key_prefix: prefix,
-                    destination_type,
+                    name: dest.name,
+                    key_prefix: key_prefix.clone(),
+                    destination_type: dest.dest_type,
                 },
                 Node {
                     position_type: PositionType::Absolute,
@@ -163,7 +223,7 @@ pub fn setup_scene(
             ))
             .with_children(|parent| {
                 parent.spawn((
-                    Text::new(format!("{}{}", prefix, name.to_uppercase())),
+                    Text::new(format!("{}{}", key_prefix, dest.name.to_uppercase())),
                     TextFont {
                         font_size: 9.5.into(),
                         ..default()
