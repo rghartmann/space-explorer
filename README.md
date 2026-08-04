@@ -82,6 +82,7 @@ This project incorporates public domain science datasets, NASA planetary maps, a
 
 ## Release History
 
+- **`v0.2.0` (Performance & Feature Release)**: Frame-rate & thermal performance optimizations (60 FPS cap, starfield transform culling, asteroid rotation culling, LOD early-exit, gas giant mesh optimization), Aphora dragon planet simulation, and interactive Autopilot navigation menu.
 - **`v0.1.0` (Stable Baseline)**: Initial stable release featuring simplified 3rd-person spaceflight navigation controls, AutoNav target locking, celestial HUD projection, dynamic Sun animation, and multi-body planetary rendering. Revert target point for future developments.
 
 ---
