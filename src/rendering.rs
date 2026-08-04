@@ -153,7 +153,6 @@ pub fn logarithmic_distance_render_system(
         let star_render_pos = star.direction * d_vis;
         transform.translation = star_render_pos;
         transform.scale = Vec3::splat(star.size_scale);
-        transform.look_at(Vec3::ZERO, Vec3::Y);
     }
 }
 
@@ -224,11 +223,11 @@ pub fn animate_sun_surface_system(
                 let next_tex = anim.frame_handles[anim.current_frame].clone();
                 mat.base_color_texture = Some(next_tex.clone());
                 mat.emissive_texture = Some(next_tex);
-            }
 
-            // Gentle solar flare emissive pulsation
-            let pulse = (anim.pulse_timer * 0.5).sin() * 1.5;
-            mat.emissive = LinearRgba::new(35.0 + pulse, 25.0 + pulse * 0.7, 6.0, 1.0);
+                // Gentle solar flare emissive pulsation (updated at frame change rate to avoid per-frame GPU re-uploads)
+                let pulse = (anim.pulse_timer * 0.5).sin() * 1.5;
+                mat.emissive = LinearRgba::new(35.0 + pulse, 25.0 + pulse * 0.7, 6.0, 1.0);
+            }
         }
     }
 }

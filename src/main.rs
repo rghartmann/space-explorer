@@ -10,6 +10,7 @@ mod scene;
 
 use bevy::prelude::*;
 use bevy::window::WindowMode;
+use bevy::winit::WinitSettings;
 
 use crate::audio::AudioPlugin;
 use crate::flight::FlightPlugin;
@@ -23,6 +24,14 @@ use crate::scene::ScenePlugin;
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.001, 0.001, 0.003)))
+        .insert_resource(WinitSettings {
+            focused_mode: bevy::winit::UpdateMode::reactive_low_power(
+                std::time::Duration::from_secs_f64(1.0 / 60.0),
+            ),
+            unfocused_mode: bevy::winit::UpdateMode::reactive_low_power(
+                std::time::Duration::from_secs_f64(1.0 / 30.0),
+            ),
+        })
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Space Explorer - Solar System Exploration & Auto-Pilot".into(),

@@ -1017,9 +1017,17 @@ pub fn orbit_moons_system(
     }
 }
 
-pub fn orbit_asteroids_system(time: Res<Time>, mut query: Query<(&Asteroid, &mut Transform)>) {
+pub fn orbit_asteroids_system(
+    time: Res<Time>,
+    flight_state: Res<FlightState>,
+    mut query: Query<(&Asteroid, &mut Transform)>,
+) {
     let dt = time.delta_secs();
+    let cam_pos = flight_state.world_pos;
     for (asteroid, mut transform) in &mut query {
+        if asteroid.world_pos.distance(cam_pos) > 200_000.0 {
+            continue;
+        }
         transform.rotate(Quat::from_axis_angle(
             asteroid.rotation_axis,
             asteroid.rotation_speed * AXIAL_ROTATION_SCALE * dt,

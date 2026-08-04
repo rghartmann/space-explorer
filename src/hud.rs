@@ -228,7 +228,7 @@ pub fn update_celestial_labels_system(
         label_height: f32,
     }
 
-    let mut visible_labels: Vec<VisibleLabelData> = Vec::new();
+    let mut visible_labels: Vec<VisibleLabelData> = Vec::with_capacity(20);
 
     // 1. Project celestial body 3D positions to 2D viewport coordinates and update text
     for (entity, label, _node, _vis, children) in &label_query {
@@ -315,12 +315,13 @@ pub fn update_celestial_labels_system(
         }
     }
 
-    let mut placed_rects: Vec<LabelRect> = vec![
+    let mut placed_rects: Vec<LabelRect> = Vec::with_capacity(22);
+    placed_rects.push(
         // Top HUD banner area obstacle (reduced height)
         LabelRect { x: 10.0, y: 10.0, w: 780.0, h: 55.0 },
-    ];
+    );
 
-    let mut resolved_positions: std::collections::HashMap<Entity, Vec2> = std::collections::HashMap::new();
+    let mut resolved_positions: std::collections::HashMap<Entity, Vec2> = std::collections::HashMap::with_capacity(20);
 
     for label_data in &visible_labels {
         let vx = label_data.viewport_pos.x;

@@ -746,7 +746,7 @@ pub fn setup_scene(
     let jupiter_angle = next_orbit_angle();
     let jupiter_pos = Vec3::new(jupiter_orbit_radius * jupiter_angle.cos(), 0.0, jupiter_orbit_radius * jupiter_angle.sin());
     let jupiter_tex: Handle<Image> = asset_server.load("textures/jupiter.jpg");
-    let jupiter_mesh = meshes.add(create_uv_sphere(69911.0, 384, 192));
+    let jupiter_mesh = meshes.add(create_uv_sphere(69911.0, 192, 96));
     let jupiter_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.38, 0.35, 0.32),
         base_color_texture: Some(jupiter_tex.clone()),
@@ -765,7 +765,7 @@ pub fn setup_scene(
             rotation_speed: 0.00726, // 9.92h fast spin
             world_pos: jupiter_pos,
         },
-        PlanetLod::new(5, false, "", 40.0, jupiter_tex.clone(), 384, 192),
+        PlanetLod::new(5, false, "", 40.0, jupiter_tex.clone(), 192, 96),
         Mesh3d(jupiter_mesh),
         MeshMaterial3d(jupiter_mat),
         Transform::from_translation(jupiter_pos).with_scale(Vec3::new(1.0, 0.935, 1.0)), // Oblate Spheroid (f=0.0649)
@@ -838,7 +838,7 @@ pub fn setup_scene(
     let saturn_angle = next_orbit_angle();
     let saturn_pos = Vec3::new(saturn_orbit_radius * saturn_angle.cos(), 0.0, saturn_orbit_radius * saturn_angle.sin());
     let saturn_tex: Handle<Image> = asset_server.load("textures/saturn.jpg");
-    let saturn_mesh = meshes.add(create_uv_sphere(58232.0, 384, 192));
+    let saturn_mesh = meshes.add(create_uv_sphere(58232.0, 192, 96));
     let saturn_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.35, 0.33, 0.28),
         base_color_texture: Some(saturn_tex.clone()),
@@ -858,7 +858,7 @@ pub fn setup_scene(
                 rotation_speed: 0.00683, // 10.55h spin
                 world_pos: saturn_pos,
             },
-            PlanetLod::new(6, false, "", 35.0, saturn_tex.clone(), 384, 192),
+            PlanetLod::new(6, false, "", 35.0, saturn_tex.clone(), 192, 96),
             Mesh3d(saturn_mesh),
             MeshMaterial3d(saturn_mat),
             Transform::from_translation(saturn_pos).with_scale(Vec3::new(1.0, 0.902, 1.0)), // Oblate Spheroid (f=0.0980)
@@ -933,7 +933,7 @@ pub fn setup_scene(
     let uranus_angle = next_orbit_angle();
     let uranus_pos = Vec3::new(uranus_orbit_radius * uranus_angle.cos(), 0.0, uranus_orbit_radius * uranus_angle.sin());
     let uranus_tex: Handle<Image> = asset_server.load("textures/uranus.jpg");
-    let uranus_mesh = meshes.add(create_uv_sphere(25362.0, 256, 128));
+    let uranus_mesh = meshes.add(create_uv_sphere(25362.0, 192, 96));
     let uranus_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.32, 0.40, 0.42),
         base_color_texture: Some(uranus_tex.clone()),
@@ -952,7 +952,7 @@ pub fn setup_scene(
             rotation_speed: -0.00418, // Retrograde spin 17.24h
             world_pos: uranus_pos,
         },
-        PlanetLod::new(7, false, "", 20.0, uranus_tex.clone(), 256, 128),
+        PlanetLod::new(7, false, "", 20.0, uranus_tex.clone(), 192, 96),
         Mesh3d(uranus_mesh),
         MeshMaterial3d(uranus_mat),
         Transform::from_translation(uranus_pos).with_scale(Vec3::new(1.0, 0.977, 1.0)),
@@ -965,7 +965,7 @@ pub fn setup_scene(
     let neptune_angle = next_orbit_angle();
     let neptune_pos = Vec3::new(neptune_orbit_radius * neptune_angle.cos(), 0.0, neptune_orbit_radius * neptune_angle.sin());
     let neptune_tex: Handle<Image> = asset_server.load("textures/neptune.jpg");
-    let neptune_mesh = meshes.add(create_uv_sphere(24622.0, 256, 128));
+    let neptune_mesh = meshes.add(create_uv_sphere(24622.0, 192, 96));
     let neptune_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.30, 0.35, 0.45),
         base_color_texture: Some(neptune_tex.clone()),
@@ -984,7 +984,7 @@ pub fn setup_scene(
             rotation_speed: 0.00447, // 16.11h spin
             world_pos: neptune_pos,
         },
-        PlanetLod::new(8, false, "", 20.0, neptune_tex.clone(), 256, 128),
+        PlanetLod::new(8, false, "", 20.0, neptune_tex.clone(), 192, 96),
         Mesh3d(neptune_mesh),
         MeshMaterial3d(neptune_mat),
         Transform::from_translation(neptune_pos).with_scale(Vec3::new(1.0, 0.983, 1.0)),
@@ -1173,7 +1173,7 @@ pub fn setup_scene(
                 rotation_speed: 0.0075,
                 world_pos: aphora_pos,
             },
-            PlanetLod::new(99, false, "", 30.0, aphora_tex.clone(), 384, 192),
+            PlanetLod::new(99, false, "", 30.0, aphora_tex.clone(), 192, 96),
             Mesh3d(aphora_mesh),
             MeshMaterial3d(aphora_mat),
             Transform::from_translation(aphora_pos).with_scale(Vec3::new(1.0, 0.91, 1.0)),
