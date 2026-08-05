@@ -55,7 +55,10 @@ pub fn rotation_looking_to(dir: Vec3) -> Quat {
     if dir == Vec3::ZERO {
         return Quat::IDENTITY;
     }
-    Quat::from_rotation_arc(Vec3::NEG_Z, dir)
+    let up_ref = if dir.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
+    let right = dir.cross(up_ref).normalize();
+    let up = right.cross(dir).normalize();
+    Quat::from_mat3(&Mat3::from_cols(right, up, -dir))
 }
 
 pub fn get_celestial_target_full_info(
@@ -148,7 +151,7 @@ pub fn pilot_freelook_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut mouse_events: MessageReader<MouseMotion>,
     mut flight_state: ResMut<FlightState>,
-    autopilot: Res<AutoPilotState>,
+    mut autopilot: ResMut<AutoPilotState>,
     mut camera_query: Query<&mut Transform, With<PilotCamera>>,
     mut ship_query: Query<&mut Transform, (With<Ship>, Without<PilotCamera>)>,
     planet_query: Query<&Planet>,
@@ -189,9 +192,22 @@ pub fn pilot_freelook_system(
             let to_target = (target_pos - flight_state.world_pos).normalize_or_zero();
             if to_target != Vec3::ZERO {
                 let destination_rot = rotation_looking_to(to_target);
-                let rot_decay = 1.0 - (-12.0 * dt).exp();
+                let current_forward = ship_transform.forward().as_vec3();
+                let angle_diff = current_forward.angle_between(to_target);
+
+                let rot_decay = if autopilot.aligned {
+                    1.0 - (-12.0 * dt).exp()
+                } else {
+                    1.0 - (-7.0 * dt).exp()
+                };
                 ship_transform.rotation = ship_transform.rotation.slerp(destination_rot, rot_decay);
                 flight_state.angular_velocity = Vec3::ZERO;
+
+                if angle_diff < 0.04 {
+                    autopilot.aligned = true;
+                }
+            } else {
+                autopilot.aligned = true;
             }
         }
     } else {
@@ -320,13 +336,13 @@ pub fn ship_flight_system(
 
         if flight_state.boost_mode {
             let target_speed = MAX_SPEED_CAP;
-            let accel_rate = 1.0 - (-5.0 * dt).exp();
+            let accel_rate = 1.0 - (-2.5 * dt).exp();
             let forward = ship_transform.forward().as_vec3();
             let current_speed = flight_state.velocity.length();
             let new_speed = current_speed.lerp(target_speed, accel_rate).max(STANDARD_MAX_SPEED);
             flight_state.velocity = forward * new_speed;
         } else if flight_state.rapid_decel {
-            let decel_rate = 1.0 - (-8.0 * dt).exp();
+            let decel_rate = 1.0 - (-3.5 * dt).exp();
             let current_speed = flight_state.velocity.length();
             let new_speed = current_speed.lerp(0.0, decel_rate);
             if new_speed <= 20.0 {
@@ -403,14 +419,22 @@ pub fn trigger_autopilot_destination(
         if dest_name != "Sun" && dest_key != 0 {
             let to_sun = -start_pos;
             let proj = to_sun.dot(line_dir);
-            if proj > 1000.0 && proj < dist - 1000.0 {
+            let min_clearance = (sun_radius * 2.8).max(250_000.0);
+            if proj > 100.0 && proj < dist - 1000.0 {
                 let closest_pt = start_pos + line_dir * proj;
                 let clearance = closest_pt.length();
-                let min_clearance = (sun_radius * 2.8).max(250_000.0);
                 if clearance < min_clearance {
-                    let perp = Vec3::Y.cross(line_dir).normalize_or_zero();
-                    let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
-                    let wp = closest_pt + bypass_dir * (min_clearance * 1.5);
+                    let offset = closest_pt;
+                    let perp = if offset.length() > 10.0 {
+                        offset.normalize()
+                    } else {
+                        let mut side = line_dir.cross(Vec3::Y);
+                        if side.length_squared() < 0.001 {
+                            side = line_dir.cross(Vec3::Z);
+                        }
+                        side.normalize()
+                    };
+                    let wp = perp * (min_clearance * 1.5);
                     let d = start_pos.length();
                     if d < closest_obstacle_dist {
                         closest_obstacle_dist = d;
@@ -424,14 +448,22 @@ pub fn trigger_autopilot_destination(
             if planet.name != dest_name {
                 let to_planet = planet.world_pos - start_pos;
                 let proj = to_planet.dot(line_dir);
-                if proj > 1000.0 && proj < dist - 1000.0 {
+                let min_clearance = (planet.radius * 2.8).max(compute_orbit_boundary(planet.radius) + 5000.0);
+                if proj > 100.0 && proj < dist - 1000.0 {
                     let closest_pt = start_pos + line_dir * proj;
                     let clearance = (closest_pt - planet.world_pos).length();
-                    let min_clearance = (planet.radius * 2.5).max(15_000.0);
                     if clearance < min_clearance {
-                        let perp = (closest_pt - planet.world_pos).normalize_or_zero();
-                        let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
-                        let wp = planet.world_pos + bypass_dir * (min_clearance * 1.6);
+                        let offset = closest_pt - planet.world_pos;
+                        let perp = if offset.length() > 10.0 {
+                            offset.normalize()
+                        } else {
+                            let mut side = line_dir.cross(Vec3::Y);
+                            if side.length_squared() < 0.001 {
+                                side = line_dir.cross(Vec3::Z);
+                            }
+                            side.normalize()
+                        };
+                        let wp = planet.world_pos + perp * (min_clearance * 1.5);
                         let d = start_pos.distance(planet.world_pos);
                         if d < closest_obstacle_dist {
                             closest_obstacle_dist = d;
@@ -447,6 +479,7 @@ pub fn trigger_autopilot_destination(
 
     autopilot.active = true;
     autopilot.arrived = false;
+    autopilot.aligned = false;
     autopilot.destination_index = Some(dest_key);
     autopilot.destination_name = dest_name;
     autopilot.prev_destination_pos = None;
@@ -460,123 +493,89 @@ pub fn autopilot_input_system(
     mut menu_state: ResMut<AutopilotMenuState>,
     mut autopilot: ResMut<AutoPilotState>,
     flight_state: Res<FlightState>,
+    mut query: Query<(&AutopilotMenuContainer, &mut Visibility)>,
     sun_query: Query<&Sun>,
     planet_query: Query<&Planet>,
     moon_query: Query<&Moon>,
-    mut menu_container_query: Query<&mut Visibility, With<AutopilotMenuContainer>>,
 ) {
-    let dt = time.delta_secs();
-
-    // Toggle menu with 'M' key
     if keyboard.just_pressed(KeyCode::KeyM) {
         menu_state.visible = !menu_state.visible;
         menu_state.input_buffer.clear();
-        menu_state.buffer_timer = 0.0;
-        let new_vis = if menu_state.visible {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        for mut vis in &mut menu_container_query {
-            *vis = new_vis;
+        for (_, mut vis) in &mut query {
+            *vis = if menu_state.visible { Visibility::Inherited } else { Visibility::Hidden };
         }
         return;
     }
 
-    // Only process numeric destination selection when menu is visible
     if !menu_state.visible {
         return;
     }
 
-    let digit_keys = [
-        (KeyCode::Digit0, '0'),
-        (KeyCode::Digit1, '1'),
-        (KeyCode::Digit2, '2'),
-        (KeyCode::Digit3, '3'),
-        (KeyCode::Digit4, '4'),
-        (KeyCode::Digit5, '5'),
-        (KeyCode::Digit6, '6'),
-        (KeyCode::Digit7, '7'),
-        (KeyCode::Digit8, '8'),
-        (KeyCode::Digit9, '9'),
-        (KeyCode::Numpad0, '0'),
-        (KeyCode::Numpad1, '1'),
-        (KeyCode::Numpad2, '2'),
-        (KeyCode::Numpad3, '3'),
-        (KeyCode::Numpad4, '4'),
-        (KeyCode::Numpad5, '5'),
-        (KeyCode::Numpad6, '6'),
-        (KeyCode::Numpad7, '7'),
-        (KeyCode::Numpad8, '8'),
-        (KeyCode::Numpad9, '9'),
-    ];
-
-    let mut pressed_digit = None;
-    for (key, digit) in digit_keys {
-        if keyboard.just_pressed(key) {
-            pressed_digit = Some(digit);
-            break;
-        }
-    }
-
-    if let Some(digit) = pressed_digit {
-        menu_state.input_buffer.push(digit);
-        menu_state.buffer_timer = 0.45;
-    }
-
-    let mut select_key = None;
-
-    if menu_state.input_buffer.len() >= 2 {
-        if let Ok(num) = menu_state.input_buffer.parse::<usize>() {
-            if num <= 99 {
-                select_key = Some(num);
-            }
-        }
-        menu_state.input_buffer.clear();
-        menu_state.buffer_timer = 0.0;
-    } else if menu_state.input_buffer.len() == 1 {
-        if let Ok(num) = menu_state.input_buffer.parse::<usize>() {
-            if num == 1 || num == 9 {
-                if keyboard.just_pressed(KeyCode::Enter) || keyboard.just_pressed(KeyCode::Space) {
-                    select_key = Some(num);
-                    menu_state.input_buffer.clear();
-                    menu_state.buffer_timer = 0.0;
-                } else {
-                    menu_state.buffer_timer -= dt;
-                    if menu_state.buffer_timer <= 0.0 {
-                        select_key = Some(num);
-                        menu_state.input_buffer.clear();
-                        menu_state.buffer_timer = 0.0;
+    if menu_state.buffer_timer > 0.0 {
+        menu_state.buffer_timer -= time.delta_secs();
+        if menu_state.buffer_timer <= 0.0 {
+            if let Ok(dest_key) = menu_state.input_buffer.parse::<usize>() {
+                if let Some(dest) = get_destination_by_key(dest_key) {
+                    trigger_autopilot_destination(
+                        dest.key_num,
+                        dest.name,
+                        &mut autopilot,
+                        &flight_state,
+                        &sun_query,
+                        &planet_query,
+                        &moon_query,
+                    );
+                    menu_state.visible = false;
+                    for (_, mut vis) in &mut query {
+                        *vis = Visibility::Hidden;
                     }
                 }
-            } else {
-                select_key = Some(num);
-                menu_state.input_buffer.clear();
-                menu_state.buffer_timer = 0.0;
             }
+            menu_state.input_buffer.clear();
         }
     }
 
-    if let Some(target_key) = select_key {
-        if let Some(dest) = get_destination_by_key(target_key) {
-            trigger_autopilot_destination(
-                dest.key_num,
-                dest.name,
-                &mut autopilot,
-                &flight_state,
-                &sun_query,
-                &planet_query,
-                &moon_query,
-            );
-            menu_state.visible = false;
-            for mut vis in &mut menu_container_query {
-                *vis = Visibility::Hidden;
+    let digit_keys = [
+        (KeyCode::Digit0, '0'), (KeyCode::Digit1, '1'), (KeyCode::Digit2, '2'),
+        (KeyCode::Digit3, '3'), (KeyCode::Digit4, '4'), (KeyCode::Digit5, '5'),
+        (KeyCode::Digit6, '6'), (KeyCode::Digit7, '7'), (KeyCode::Digit8, '8'),
+        (KeyCode::Digit9, '9'), (KeyCode::Numpad0, '0'), (KeyCode::Numpad1, '1'),
+        (KeyCode::Numpad2, '2'), (KeyCode::Numpad3, '3'), (KeyCode::Numpad4, '4'),
+        (KeyCode::Numpad5, '5'), (KeyCode::Numpad6, '6'), (KeyCode::Numpad7, '7'),
+        (KeyCode::Numpad8, '8'), (KeyCode::Numpad9, '9'),
+    ];
+
+    for (key, ch) in digit_keys {
+        if keyboard.just_pressed(key) {
+            menu_state.input_buffer.push(ch);
+            menu_state.buffer_timer = 0.25;
+
+            if let Ok(dest_key) = menu_state.input_buffer.parse::<usize>() {
+                if dest_key == 99 || (dest_key <= 17 && dest_key != 1) {
+                    if let Some(dest) = get_destination_by_key(dest_key) {
+                        trigger_autopilot_destination(
+                            dest.key_num,
+                            dest.name,
+                            &mut autopilot,
+                            &flight_state,
+                            &sun_query,
+                            &planet_query,
+                            &moon_query,
+                        );
+                        menu_state.visible = false;
+                        menu_state.input_buffer.clear();
+                        menu_state.buffer_timer = 0.0;
+                        for (_, mut vis) in &mut query {
+                            *vis = Visibility::Hidden;
+                        }
+                        return;
+                    }
+                }
             }
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn autopilot_menu_button_system(
     mut interaction_query: Query<
         (&Interaction, &AutopilotMenuItemButton, &mut BackgroundColor, &mut BorderColor),
@@ -585,28 +584,30 @@ pub fn autopilot_menu_button_system(
     mut menu_state: ResMut<AutopilotMenuState>,
     mut autopilot: ResMut<AutoPilotState>,
     flight_state: Res<FlightState>,
+    mut container_query: Query<(&AutopilotMenuContainer, &mut Visibility)>,
     sun_query: Query<&Sun>,
     planet_query: Query<&Planet>,
     moon_query: Query<&Moon>,
-    mut menu_container_query: Query<&mut Visibility, With<AutopilotMenuContainer>>,
 ) {
     for (interaction, item, mut bg_color, mut border_color) in &mut interaction_query {
         match *interaction {
             Interaction::Pressed => {
-                trigger_autopilot_destination(
-                    item.destination_key,
-                    item.destination_name,
-                    &mut autopilot,
-                    &flight_state,
-                    &sun_query,
-                    &planet_query,
-                    &moon_query,
-                );
-                menu_state.visible = false;
-                menu_state.input_buffer.clear();
-                menu_state.buffer_timer = 0.0;
-                for mut vis in &mut menu_container_query {
-                    *vis = Visibility::Hidden;
+                if let Some(dest) = get_destination_by_key(item.destination_key) {
+                    trigger_autopilot_destination(
+                        dest.key_num,
+                        dest.name,
+                        &mut autopilot,
+                        &flight_state,
+                        &sun_query,
+                        &planet_query,
+                        &moon_query,
+                    );
+                    menu_state.visible = false;
+                    menu_state.input_buffer.clear();
+                    menu_state.buffer_timer = 0.0;
+                    for (_, mut vis) in &mut container_query {
+                        *vis = Visibility::Hidden;
+                    }
                 }
             }
             Interaction::Hovered => {
@@ -644,7 +645,7 @@ pub fn autopilot_pathfinding_system(
 
     let Some(destination_idx) = autopilot.destination_index else { return; };
 
-    let (final_target_pos, _, _, parent_planet_idx) = match get_celestial_target_full_info(
+    let (final_target_pos, _, dest_name, parent_planet_idx) = match get_celestial_target_full_info(
         destination_idx,
         autopilot.destination_name,
         &sun_query,
@@ -664,31 +665,41 @@ pub fn autopilot_pathfinding_system(
         }
     }
 
-    let current_target_pos = autopilot.current_waypoint.unwrap_or(final_target_pos);
-    let to_target = current_target_pos - start_pos;
-    let dist = to_target.length();
+    let to_final = final_target_pos - start_pos;
+    let total_dist = to_final.length();
 
-    if dist <= 1000.0 {
+    if total_dist <= 1000.0 {
+        autopilot.current_waypoint = None;
         return;
     }
 
-    let line_dir = to_target / dist;
+    let line_dir = to_final / total_dist;
     let mut closest_obstacle_dist = f32::MAX;
     let mut chosen_waypoint = None;
 
     let sun_radius = sun_query.iter().next().map(|s| s.radius).unwrap_or(696340.0);
 
-    if destination_idx != 0 {
+    // 1. Check Sun
+    if dest_name != "Sun" && destination_idx != 0 {
         let to_sun = -start_pos;
         let proj = to_sun.dot(line_dir);
-        if proj > 1000.0 && proj < dist - 1000.0 {
+        let min_clearance = (sun_radius * 2.8).max(250_000.0);
+
+        if proj > 100.0 && proj < total_dist - 1000.0 {
             let closest_pt = start_pos + line_dir * proj;
             let clearance = closest_pt.length();
-            let min_clearance = (sun_radius * 2.8).max(250_000.0);
             if clearance < min_clearance {
-                let perp = Vec3::Y.cross(line_dir).normalize_or_zero();
-                let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
-                let wp = closest_pt + bypass_dir * (min_clearance * 1.5);
+                let offset = closest_pt;
+                let perp = if offset.length() > 10.0 {
+                    offset.normalize()
+                } else {
+                    let mut side = line_dir.cross(Vec3::Y);
+                    if side.length_squared() < 0.001 {
+                        side = line_dir.cross(Vec3::Z);
+                    }
+                    side.normalize()
+                };
+                let wp = perp * (min_clearance * 1.5);
                 let d = start_pos.length();
                 if d < closest_obstacle_dist {
                     closest_obstacle_dist = d;
@@ -698,18 +709,28 @@ pub fn autopilot_pathfinding_system(
         }
     }
 
+    // 2. Check Planets
     for planet in &planet_query {
-        if destination_idx != planet.index && Some(planet.index) != parent_planet_idx {
+        if destination_idx != planet.index && dest_name != planet.name && Some(planet.index) != parent_planet_idx {
             let to_planet = planet.world_pos - start_pos;
             let proj = to_planet.dot(line_dir);
-            if proj > 1000.0 && proj < dist - 1000.0 {
+            let min_clearance = (planet.radius * 2.8).max(compute_orbit_boundary(planet.radius) + 5000.0);
+
+            if proj > 100.0 && proj < total_dist - 1000.0 {
                 let closest_pt = start_pos + line_dir * proj;
                 let clearance = (closest_pt - planet.world_pos).length();
-                let min_clearance = (planet.radius * 2.5).max(15_000.0);
                 if clearance < min_clearance {
-                    let perp = (closest_pt - planet.world_pos).normalize_or_zero();
-                    let bypass_dir = if perp != Vec3::ZERO { perp } else { Vec3::Y };
-                    let wp = planet.world_pos + bypass_dir * (min_clearance * 1.6);
+                    let offset = closest_pt - planet.world_pos;
+                    let perp = if offset.length() > 10.0 {
+                        offset.normalize()
+                    } else {
+                        let mut side = line_dir.cross(Vec3::Y);
+                        if side.length_squared() < 0.001 {
+                            side = line_dir.cross(Vec3::Z);
+                        }
+                        side.normalize()
+                    };
+                    let wp = planet.world_pos + perp * (min_clearance * 1.5);
                     let d = start_pos.distance(planet.world_pos);
                     if d < closest_obstacle_dist {
                         closest_obstacle_dist = d;
@@ -720,11 +741,64 @@ pub fn autopilot_pathfinding_system(
         }
     }
 
-    if let Some(wp) = chosen_waypoint {
-        autopilot.current_waypoint = Some(wp);
+    // 3. Check Moons
+    for moon in &moon_query {
+        if dest_name != moon.name {
+            if destination_idx == moon.parent_index && start_pos.distance(final_target_pos) < 100_000.0 {
+                continue;
+            }
+            let to_moon = moon.world_pos - start_pos;
+            let proj = to_moon.dot(line_dir);
+            let min_clearance = (moon.radius * 2.8).max(compute_orbit_boundary(moon.radius) + 2000.0);
+
+            if proj > 100.0 && proj < total_dist - 1000.0 {
+                let closest_pt = start_pos + line_dir * proj;
+                let clearance = (closest_pt - moon.world_pos).length();
+                if clearance < min_clearance {
+                    let offset = closest_pt - moon.world_pos;
+                    let perp = if offset.length() > 10.0 {
+                        offset.normalize()
+                    } else {
+                        let mut side = line_dir.cross(Vec3::Y);
+                        if side.length_squared() < 0.001 {
+                            side = line_dir.cross(Vec3::Z);
+                        }
+                        side.normalize()
+                    };
+                    let wp = moon.world_pos + perp * (min_clearance * 1.5);
+                    let d = start_pos.distance(moon.world_pos);
+                    if d < closest_obstacle_dist {
+                        closest_obstacle_dist = d;
+                        chosen_waypoint = Some(wp);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(new_wp) = chosen_waypoint {
+        let old_wp = autopilot.current_waypoint;
+        autopilot.current_waypoint = Some(new_wp);
+
+        if let Some(old) = old_wp {
+            if old.distance(new_wp) > 5000.0 {
+                let to_old = (old - start_pos).normalize_or_zero();
+                let to_new = (new_wp - start_pos).normalize_or_zero();
+                if to_old.angle_between(to_new) > 0.25 {
+                    autopilot.aligned = false;
+                }
+            }
+        } else {
+            let to_final = (final_target_pos - start_pos).normalize_or_zero();
+            let to_new = (new_wp - start_pos).normalize_or_zero();
+            if to_final.angle_between(to_new) > 0.25 {
+                autopilot.aligned = false;
+            }
+        }
+    } else {
+        autopilot.current_waypoint = None;
     }
 }
-
 
 #[allow(clippy::too_many_arguments)]
 pub fn autopilot_flight_system(
@@ -741,8 +815,6 @@ pub fn autopilot_flight_system(
     if !autopilot.active {
         return;
     }
-
-    let Ok(mut ship_transform) = ship_query.single_mut() else { return; };
 
     let mut destination_pos = Vec3::ZERO;
     let mut destination_radius = 6371.0;
@@ -793,6 +865,42 @@ pub fn autopilot_flight_system(
     let real_distance_to_dest = (destination_pos - flight_state.world_pos).length();
 
     let arrival_dist = compute_orbit_boundary(destination_radius);
+    let target_dir = to_target.normalize_or_zero();
+
+    // Check alignment state and rotate ship towards target vector
+    if let Some(mut ship_transform) = ship_query.iter_mut().next() {
+        if target_dir != Vec3::ZERO {
+            let destination_rot = rotation_looking_to(target_dir);
+            let current_forward = ship_transform.forward().as_vec3();
+            let angle_diff = current_forward.angle_between(target_dir);
+            if angle_diff < 0.05 {
+                autopilot.aligned = true;
+            } else {
+                let rot_decay = 1.0 - (-10.0 * dt).exp();
+                ship_transform.rotation = ship_transform.rotation.slerp(destination_rot, rot_decay);
+            }
+        } else {
+            autopilot.aligned = true;
+        }
+    } else {
+        autopilot.aligned = true;
+    }
+
+    let Ok(mut ship_transform) = ship_query.single_mut() else {
+        // Headless execution fallback without ship transform component
+        if autopilot.arrived {
+            flight_state.world_pos = destination_pos;
+            return;
+        }
+        let decel_start_dist = (arrival_dist * 3.0).max(50_000.0);
+        if real_distance_to_dest > decel_start_dist + 10_000.0 && real_distance_to_dest > 30_000.0 {
+            flight_state.boost_mode = true;
+        }
+        let step_vel = target_dir * MAX_SPEED_CAP;
+        flight_state.velocity = step_vel;
+        flight_state.world_pos += step_vel * dt;
+        return;
+    };
 
     // Smooth arrived state position holding following the planet's orbital position
     if autopilot.arrived {
@@ -805,6 +913,22 @@ pub fn autopilot_flight_system(
         flight_state.boost_mode = false;
         flight_state.rapid_decel = false;
         autopilot.prev_destination_pos = Some(destination_pos);
+        ship_transform.translation = Vec3::ZERO;
+        return;
+    }
+
+    if !autopilot.aligned {
+        // Alignment rotation phase: hold back acceleration until ship rotates towards target vector
+        flight_state.boost_mode = false;
+        flight_state.rapid_decel = false;
+
+        let vel_decay = 1.0 - (-8.0 * dt).exp();
+        flight_state.velocity = flight_state.velocity.lerp(destination_vel, vel_decay);
+
+        let current_rel_pos = flight_state.world_pos - destination_pos;
+        let current_rel_vel = flight_state.velocity - destination_vel;
+        let new_rel_pos = current_rel_pos + current_rel_vel * dt;
+        flight_state.world_pos = destination_pos + new_rel_pos;
         ship_transform.translation = Vec3::ZERO;
         return;
     }
@@ -826,8 +950,6 @@ pub fn autopilot_flight_system(
     }
 
     autopilot.prev_destination_pos = Some(destination_pos);
-
-    let target_dir = to_target.normalize_or_zero();
 
     let decel_start_dist = (arrival_dist * 3.0).max(50_000.0);
 
@@ -854,7 +976,12 @@ pub fn autopilot_flight_system(
     let target_rel_speed = max_cruise_speed.min(max_safe_rel_speed);
     let target_vel = destination_vel + target_dir * target_rel_speed;
 
-    let decay_rate = if real_distance_to_dest <= decel_start_dist { 14.0 } else { 8.0 };
+    let decay_rate = if real_distance_to_dest <= decel_start_dist {
+        let progress = (1.0 - (real_distance_to_dest / decel_start_dist)).clamp(0.0, 1.0);
+        4.0 + 4.0 * progress
+    } else {
+        4.0
+    };
     let vel_decay = 1.0 - (-decay_rate * dt).exp();
     flight_state.velocity = flight_state.velocity.lerp(target_vel, vel_decay);
 
@@ -987,7 +1114,7 @@ pub fn celestial_collision_system(
     }
 }
 
-pub const AXIAL_ROTATION_SCALE: f32 = 0.25;
+pub const AXIAL_ROTATION_SCALE: f32 = 0.2625;
 pub const PLANET_ORBIT_TIME_SCALE: f32 = 0.000008;
 pub const MOON_ORBIT_TIME_SCALE: f32 = 0.0001;
 
@@ -1721,6 +1848,191 @@ mod tests {
         let mut schedule = Schedule::default();
         schedule.add_systems(test_system);
         schedule.run(app.world_mut());
+    }
+
+    #[test]
+    fn test_axial_rotation_scale_increased() {
+        assert_eq!(
+            AXIAL_ROTATION_SCALE, 0.2625,
+            "AXIAL_ROTATION_SCALE should be scaled by 5% (0.25 * 1.05)"
+        );
+    }
+
+    #[test]
+    fn test_smoothed_high_speed_acceleration_and_deceleration() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+
+        let flight_state = FlightState {
+            boost_mode: true,
+            velocity: Vec3::ZERO,
+            ..Default::default()
+        };
+        app.insert_resource(flight_state);
+        app.init_resource::<AutoPilotState>();
+        app.world_mut().spawn((Ship, Transform::IDENTITY));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(ship_flight_system);
+
+        // Advance 1 frame (16ms)
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(16));
+        schedule.run(app.world_mut());
+
+        let fs1 = app.world().resource::<FlightState>();
+        let speed1 = fs1.velocity.length();
+
+        // Ensure smooth gradual acceleration rather than instant snap to max cap
+        assert!(
+            speed1 > 0.0 && speed1 < MAX_SPEED_CAP,
+            "Boost mode acceleration should build up smoothly, speed1={speed1}"
+        );
+    }
+
+    #[test]
+    fn test_autopilot_smooth_rotation_alignment_before_acceleration() {
+        let mut app = App::new();
+        app.add_plugins(bevy::input::InputPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+
+        let ship_transform = Transform::from_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)); // Facing +X
+        app.world_mut().spawn((Ship, ship_transform));
+        app.init_resource::<FlightState>();
+
+        let autopilot = AutoPilotState {
+            active: true,
+            destination_index: Some(3),
+            destination_name: "Earth",
+            aligned: false,
+            ..Default::default()
+        };
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn(Planet {
+            index: 3,
+            name: "Earth",
+            radius: 6371.0,
+            orbit_radius: 149_597_870.7,
+            orbit_speed: 0.0,
+            rotation_speed: 0.0,
+            orbit_angle: 0.0,
+            world_pos: Vec3::new(0.0, 0.0, -100_000.0), // Target is along -Z
+        });
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems((autopilot_flight_system, pilot_freelook_system).chain());
+
+        // Frame 1: Ship should hold back acceleration while rotating to align
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(16));
+        schedule.run(app.world_mut());
+
+        let fs1 = app.world().resource::<FlightState>();
+        assert!(
+            !fs1.boost_mode,
+            "FTL boost mode MUST NOT engage until ship completes alignment rotation towards target"
+        );
+
+        // Advance frames until aligned
+        for _ in 0..60 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
+            schedule.run(app.world_mut());
+        }
+
+        let ap_aligned = app.world().resource::<AutoPilotState>();
+        assert!(
+            ap_aligned.aligned,
+            "Autopilot should transition to aligned state once ship rotates towards target"
+        );
+    }
+
+    #[test]
+    fn test_pitch_yaw_leveling_irrespective_of_orientation() {
+        let dir_to_target = Vec3::new(1.0, 0.5, -1.0).normalize();
+        let rot = rotation_looking_to(dir_to_target);
+        
+        let (_yaw, _pitch, roll) = rot.to_euler(EulerRot::YXZ);
+        assert!(
+            roll.abs() < 0.001,
+            "rotation_looking_to MUST level pitch/yaw and eliminate roll (roll={roll})"
+        );
+        let fwd = rot * Vec3::NEG_Z;
+        assert!(
+            (fwd - dir_to_target).length() < 0.001,
+            "rotation_looking_to MUST align ship forward vector with target direction"
+        );
+    }
+
+    #[test]
+    fn test_pathfinding_obstacle_directly_in_front_bypass() {
+        let mut app = App::new();
+        app.init_resource::<Time>();
+
+        let start_pos = Vec3::new(0.0, 0.0, 100_000.0);
+        let obstacle_pos = Vec3::new(0.0, 0.0, 50_000.0); // Directly in front of ship
+        let target_pos = Vec3::new(0.0, 0.0, -500_000.0); // Directly behind obstacle
+
+        let flight_state = FlightState {
+            world_pos: start_pos,
+            ..Default::default()
+        };
+        app.insert_resource(flight_state);
+
+        let autopilot = AutoPilotState {
+            active: true,
+            destination_index: Some(2),
+            destination_name: "TargetPlanet",
+            ..Default::default()
+        };
+        app.insert_resource(autopilot);
+
+        app.world_mut().spawn(Planet {
+            index: 1,
+            name: "ObstaclePlanet",
+            radius: 10_000.0,
+            orbit_radius: 0.0,
+            orbit_speed: 0.0,
+            rotation_speed: 0.0,
+            orbit_angle: 0.0,
+            world_pos: obstacle_pos,
+        });
+
+        app.world_mut().spawn(Planet {
+            index: 2,
+            name: "TargetPlanet",
+            radius: 6000.0,
+            orbit_radius: 0.0,
+            orbit_speed: 0.0,
+            rotation_speed: 0.0,
+            orbit_angle: 0.0,
+            world_pos: target_pos,
+        });
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(autopilot_pathfinding_system);
+        schedule.run(app.world_mut());
+
+        let ap = app.world().resource::<AutoPilotState>();
+        assert!(
+            ap.current_waypoint.is_some(),
+            "Pathfinding MUST generate a bypass waypoint when destination is directly behind a celestial body in front of ship"
+        );
+
+        let wp = ap.current_waypoint.unwrap();
+        let dist_wp_to_obstacle = wp.distance(obstacle_pos);
+        let min_clearance = 10_000.0 * 2.8;
+        assert!(
+            dist_wp_to_obstacle >= min_clearance,
+            "Bypass waypoint must provide generous safety clearance outside obstacle radius (dist={dist_wp_to_obstacle}, min={min_clearance})"
+        );
     }
 }
 

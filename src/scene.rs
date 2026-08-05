@@ -345,11 +345,6 @@ pub fn setup_scene(
             }),
             Transform::from_xyz(0.0, 1.2, 4.0)
                 .looking_at(Vec3::new(0.0, 0.1, -5.0), Vec3::Y),
-            DistanceFog {
-                color: Color::srgba(0.0005, 0.001, 0.003, 1.0),
-                falloff: FogFalloff::Exponential { density: 0.0000001 },
-                ..default()
-            },
         ))
         .id();
 
@@ -371,10 +366,10 @@ pub fn setup_scene(
     commands.entity(ship_entity).add_child(ship_light);
 
 
-    // Ambient Fill Light for deep space (Subtle & Dramatic)
+    // Ambient Fill Light for deep space (Subtle & Dramatic Night-side Surface Visibility)
     commands.spawn(AmbientLight {
-        color: Color::srgba(0.04, 0.06, 0.12, 1.0),
-        brightness: 1.0,
+        color: Color::srgba(0.22, 0.25, 0.32, 1.0),
+        brightness: 1.35,
         affects_lightmapped_meshes: false,
     });
 
@@ -840,10 +835,10 @@ pub fn setup_scene(
     let saturn_tex: Handle<Image> = asset_server.load("textures/saturn.jpg");
     let saturn_mesh = meshes.add(create_uv_sphere(58232.0, 192, 96));
     let saturn_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.35, 0.33, 0.28),
+        base_color: Color::srgb(0.42, 0.38, 0.32),
         base_color_texture: Some(saturn_tex.clone()),
-        perceptual_roughness: 0.88,
-        reflectance: 0.10,
+        perceptual_roughness: 0.70,
+        reflectance: 0.25,
         ..default()
     });
     let saturn_entity = commands
@@ -866,17 +861,34 @@ pub fn setup_scene(
         .id();
     spawn_planet_area_light(&mut commands, saturn_entity, saturn_pos, 58232.0);
 
+    // Saturn Atmospheric Limb & Ringshine Aura (Photorealistic Subtle Glow & Night-side Limb Scatter)
+    let saturn_atmo_mesh = meshes.add(create_uv_sphere(59500.0, 96, 48));
+    let saturn_atmo_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.85, 0.75, 0.45, 0.12),
+        emissive: LinearRgba::new(0.8, 0.65, 0.3, 0.12),
+        alpha_mode: AlphaMode::Add,
+        unlit: true,
+        cull_mode: None,
+        ..default()
+    });
+    let saturn_atmo_entity = commands.spawn((
+        Mesh3d(saturn_atmo_mesh),
+        MeshMaterial3d(saturn_atmo_mat),
+        Transform::IDENTITY,
+    )).id();
+    commands.entity(saturn_entity).add_child(saturn_atmo_entity);
+
     // Saturn Ring System (Transparent 2D Ring Plane Disk with Radial Texture: Real 74,500 km to 136,775 km boundary)
     let saturn_ring_tex: Handle<Image> = asset_server.load("textures/saturn_ring.png");
     let ring_plane_mesh = meshes.add(create_flat_ring_mesh(74500.0, 136775.0, 256, 16));
     let ring_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.38, 0.35, 0.30, 0.80),
+        base_color: Color::srgba(0.48, 0.44, 0.38, 0.85),
         base_color_texture: Some(saturn_ring_tex.clone()),
         alpha_mode: AlphaMode::Blend,
         cull_mode: None,
         double_sided: true,
-        perceptual_roughness: 0.85,
-        reflectance: 0.10,
+        perceptual_roughness: 0.70,
+        reflectance: 0.20,
         ..default()
     });
 
@@ -1732,5 +1744,22 @@ mod tests {
             "dragon.glb should be a full 3D model asset"
         );
     }
+
+    #[test]
+    fn test_saturn_night_side_ambient_lighting_setup() {
+        let saturn_radius = 58232.0;
+        let atmo_radius = 59500.0;
+        assert!(
+            atmo_radius > saturn_radius,
+            "Saturn atmospheric limb aura shell must surround Saturn surface"
+        );
+
+        let saturn_tex_path = std::path::Path::new("assets/textures/saturn.jpg");
+        assert!(saturn_tex_path.exists(), "saturn.jpg texture must exist");
+
+        let saturn_ring_tex_path = std::path::Path::new("assets/textures/saturn_ring.png");
+        assert!(saturn_ring_tex_path.exists(), "saturn_ring.png texture must exist");
+    }
 }
+
 

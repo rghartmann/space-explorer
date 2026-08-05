@@ -38,6 +38,7 @@ pub struct AutoPilotState {
     pub destination_name: &'static str,
     pub prev_destination_pos: Option<Vec3>,
     pub current_waypoint: Option<Vec3>, // Waypoint for path-finding avoidance
+    pub aligned: bool, // True when ship completed alignment rotation to target vector
 }
 
 impl AutoPilotState {
@@ -60,6 +61,7 @@ impl AutoPilotState {
     pub fn reset_all(&mut self) {
         self.active = false;
         self.arrived = false;
+        self.aligned = false;
         self.destination_index = None;
         self.destination_name = "";
         self.current_waypoint = None;

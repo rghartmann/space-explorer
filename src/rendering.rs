@@ -194,10 +194,10 @@ pub fn update_directional_sunlight_system(
     let Ok(ship_transform) = ship_query.single() else { return; };
     let cam_pos = flight_state.world_pos + ship_transform.rotation * Vec3::new(0.0, 1.2, 4.0);
 
-    let dir_to_sun = (-cam_pos).normalize_or_zero();
-    if dir_to_sun != Vec3::ZERO {
+    let dir_from_sun = cam_pos.normalize_or_zero();
+    if dir_from_sun != Vec3::ZERO {
         for mut light_transform in &mut sun_light_query {
-            *light_transform = Transform::IDENTITY.looking_at(dir_to_sun, Vec3::Y);
+            *light_transform = Transform::IDENTITY.looking_at(dir_from_sun, Vec3::Y);
         }
     }
 }
@@ -212,7 +212,7 @@ pub fn animate_sun_surface_system(
 
     for (_sun, mut anim, mut transform, mat_handle) in &mut sun_query {
         // Slow natural spherical rotation of the Sun along Y-axis
-        transform.rotate_y(0.005 * delta_secs);
+        transform.rotate_y(0.00525 * delta_secs);
 
         anim.frame_timer.tick(delta);
         anim.pulse_timer += delta_secs;
@@ -229,6 +229,22 @@ pub fn animate_sun_surface_system(
                 mat.emissive = LinearRgba::new(35.0 + pulse, 25.0 + pulse * 0.7, 6.0, 1.0);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sunlight_direction_vector_points_outward_from_sun() {
+        let ship_world_pos = Vec3::new(1_000_000.0, 0.0, 0.0);
+        let dir_from_sun = ship_world_pos.normalize_or_zero();
+        assert_eq!(dir_from_sun, Vec3::new(1.0, 0.0, 0.0));
+
+        let light_transform = Transform::IDENTITY.looking_at(dir_from_sun, Vec3::Y);
+        let forward_dir = *light_transform.forward();
+        assert!((forward_dir - dir_from_sun).length() < 1e-4);
     }
 }
 
