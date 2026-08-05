@@ -256,14 +256,10 @@ pub fn update_planet_lod_mesh_system(
         // Quick exit if blend is already 0.0 and target blend was 0.0, and ship is far away
         if (lod.blend - lod.target_blend).abs() <= 0.001 && lod.target_blend == 0.0 {
             let is_destination = if autopilot.active {
-                if let Some(destination_idx) = autopilot.destination_index {
-                    if lod.is_moon {
-                        autopilot.destination_name == lod.moon_name
-                    } else {
-                        destination_idx == lod.planet_index
-                    }
+                if lod.is_moon {
+                    autopilot.destination_name == lod.moon_name
                 } else {
-                    false
+                    planet_query.iter().find(|p| p.index == lod.planet_index).map_or(false, |p| p.name == autopilot.destination_name)
                 }
             } else {
                 false
@@ -282,14 +278,10 @@ pub fn update_planet_lod_mesh_system(
         }
 
         let is_destination = if autopilot.active {
-            if let Some(destination_idx) = autopilot.destination_index {
-                if lod.is_moon {
-                    autopilot.destination_name == lod.moon_name
-                } else {
-                    destination_idx == lod.planet_index
-                }
+            if lod.is_moon {
+                autopilot.destination_name == lod.moon_name
             } else {
-                false
+                planet_query.iter().find(|p| p.index == lod.planet_index).map_or(false, |p| p.name == autopilot.destination_name)
             }
         } else {
             false

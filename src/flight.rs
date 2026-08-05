@@ -8,7 +8,7 @@ use crate::components::{
 use crate::resources::{AppState, AutoPilotState, AutopilotMenuState, FlightState};
 
 pub const SPEED_OF_LIGHT: f32 = 299_792.47; // Speed of light in km/s (1.0c)
-pub const STANDARD_MAX_SPEED: f32 = 2_000.0;   // 2,000 km/s (10x increased non-warp impulse speed cap)
+pub const STANDARD_MAX_SPEED: f32 = SPEED_OF_LIGHT * 0.02; // 2% of c (~5,995.85 km/s non-warp impulse speed cap)
 pub const MAX_SPEED_CAP: f32 = 149_896_235.0; // 149,896,235 km/s (500.0c FTL warp boost cap)
 pub const DRAGON_RENDER_DISTANCE: f32 = 1_500_000.0; // Distance threshold (km) to render and animate Aphora's dragons
 
@@ -65,30 +65,43 @@ pub fn get_celestial_target_full_info(
     planet_query: &Query<&Planet>,
     moon_query: &Query<&Moon>,
 ) -> Option<(Vec3, f32, &'static str, Option<usize>)> {
-    if destination_name == "Sun" || destination_idx == 0 {
+    if destination_name == "Sun" || (destination_name.is_empty() && destination_idx == 0) {
         let sun = sun_query.iter().next()?;
         return Some((Vec3::ZERO, sun.radius, "Sun", None));
     }
 
-    for moon in moon_query {
-        if moon.name == destination_name {
-            return Some((
-                moon.world_pos,
-                moon.radius,
-                moon.name,
-                Some(moon.parent_index),
-            ));
+    if !destination_name.is_empty() {
+        for moon in moon_query {
+            if moon.name == destination_name {
+                return Some((
+                    moon.world_pos,
+                    moon.radius,
+                    moon.name,
+                    Some(moon.parent_index),
+                ));
+            }
         }
-    }
 
-    for planet in planet_query {
-        if planet.name == destination_name || planet.index == destination_idx {
-            return Some((
-                planet.world_pos,
-                planet.radius,
-                planet.name,
-                Some(planet.index),
-            ));
+        for planet in planet_query {
+            if planet.name == destination_name {
+                return Some((
+                    planet.world_pos,
+                    planet.radius,
+                    planet.name,
+                    Some(planet.index),
+                ));
+            }
+        }
+    } else {
+        for planet in planet_query {
+            if planet.index == destination_idx {
+                return Some((
+                    planet.world_pos,
+                    planet.radius,
+                    planet.name,
+                    Some(planet.index),
+                ));
+            }
         }
     }
 
@@ -947,14 +960,14 @@ pub fn celestial_collision_system(
     };
 
     for sun in &sun_query {
-        let is_target = is_ap_active && dest_idx == Some(0);
+        let is_target = is_ap_active && (dest_name == "Sun" || (dest_name.is_empty() && dest_idx == Some(0)));
         if check_collision(Vec3::ZERO, sun.radius, Vec3::ZERO, is_target) {
             return;
         }
     }
 
     for planet in &planet_query {
-        let is_target = is_ap_active && (dest_idx == Some(planet.index) || (dest_idx == Some(100) && Some(planet.index) == parent_planet_idx));
+        let is_target = is_ap_active && (dest_name == planet.name || (dest_name.is_empty() && dest_idx == Some(planet.index)) || (dest_idx == Some(100) && Some(planet.index) == parent_planet_idx));
         if check_collision(planet.world_pos, planet.radius, Vec3::ZERO, is_target) {
             return;
         }
@@ -1648,6 +1661,66 @@ mod tests {
             500.0 * SPEED_OF_LIGHT
         );
         assert_eq!(DRAGON_RENDER_DISTANCE, 1_500_000.0);
+        assert!(
+            (STANDARD_MAX_SPEED - (0.02 * SPEED_OF_LIGHT)).abs() < 0.001,
+            "STANDARD_MAX_SPEED should be 2% of speed of light (0.02c)"
+        );
+    }
+
+    #[test]
+    fn test_saturn_key_10_autopilot_destination_resolves_to_saturn_not_ceres() {
+        let dest = get_destination_by_key(10);
+        assert!(dest.is_some(), "Key 10 should exist in AUTOPILOT_DESTINATIONS");
+        let dest = dest.unwrap();
+        assert_eq!(dest.name, "Saturn");
+
+        let mut app = App::new();
+        // Spawn Ceres with planet index 10
+        app.world_mut().spawn(Planet {
+            index: 10,
+            name: "Ceres",
+            radius: 470.0,
+            orbit_radius: 0.0,
+            orbit_speed: 0.0,
+            rotation_speed: 0.0,
+            orbit_angle: 0.0,
+            world_pos: Vec3::new(1000.0, 0.0, 0.0),
+        });
+        // Spawn Saturn with planet index 6
+        app.world_mut().spawn(Planet {
+            index: 6,
+            name: "Saturn",
+            radius: 58232.0,
+            orbit_radius: 0.0,
+            orbit_speed: 0.0,
+            rotation_speed: 0.0,
+            orbit_angle: 0.0,
+            world_pos: Vec3::new(5000.0, 0.0, 0.0),
+        });
+
+        fn test_system(
+            sun_query: Query<&Sun>,
+            planet_query: Query<&Planet>,
+            moon_query: Query<&Moon>,
+        ) {
+            let target = get_celestial_target_full_info(
+                10,
+                "Saturn",
+                &sun_query,
+                &planet_query,
+                &moon_query,
+            );
+            assert!(target.is_some(), "Target info should be found for Saturn");
+            let (pos, radius, name, idx) = target.unwrap();
+            assert_eq!(name, "Saturn", "Target name should be Saturn, not Ceres");
+            assert_eq!(pos, Vec3::new(5000.0, 0.0, 0.0), "Target pos should match Saturn pos");
+            assert_eq!(radius, 58232.0);
+            assert_eq!(idx, Some(6));
+        }
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(test_system);
+        schedule.run(app.world_mut());
     }
 }
 
