@@ -50,6 +50,67 @@ pub fn compute_orbit_boundary(radius: f32) -> f32 {
     }
 }
 
+/// Computes the maximum warp speed cap based on distance to destination.
+/// Nearby destinations (<= 1M km) cap at 10.0x c, while far outer targets
+/// (>= 1,000M km / 1B km) accelerate up to the maximum 500.0x c.
+pub fn compute_warp_speed_cap(distance_km: f32) -> f32 {
+    let min_warp_c = 10.0;
+    let max_warp_c = 500.0;
+
+    let min_dist = 1_000_000.0;
+    let max_dist = 1_000_000_000.0;
+
+    if distance_km <= min_dist {
+        min_warp_c * SPEED_OF_LIGHT
+    } else if distance_km >= max_dist {
+        max_warp_c * SPEED_OF_LIGHT
+    } else {
+        let t = ((distance_km - min_dist) / (max_dist - min_dist)).clamp(0.0, 1.0);
+        let factor = t.powf(0.75);
+        let target_c = min_warp_c + (max_warp_c - min_warp_c) * factor;
+        target_c * SPEED_OF_LIGHT
+    }
+}
+
+pub fn get_nearest_celestial_distance(
+    pos: Vec3,
+    sun_query: &Query<&Sun>,
+    planet_query: &Query<&Planet>,
+    moon_query: &Query<&Moon>,
+) -> f32 {
+    let mut min_dist = f32::MAX;
+
+    for sun in sun_query {
+        let dist = pos.length();
+        let surface_dist = (dist - sun.radius).max(0.0);
+        if surface_dist < min_dist {
+            min_dist = surface_dist;
+        }
+    }
+
+    for planet in planet_query {
+        let dist = pos.distance(planet.world_pos);
+        let surface_dist = (dist - planet.radius).max(0.0);
+        if surface_dist < min_dist {
+            min_dist = surface_dist;
+        }
+    }
+
+    for moon in moon_query {
+        let dist = pos.distance(moon.world_pos);
+        let surface_dist = (dist - moon.radius).max(0.0);
+        if surface_dist < min_dist {
+            min_dist = surface_dist;
+        }
+    }
+
+    if min_dist == f32::MAX {
+        1_000_000_000.0
+    } else {
+        min_dist
+    }
+}
+
 pub fn rotation_looking_to(dir: Vec3) -> Quat {
     let dir = dir.normalize_or_zero();
     if dir == Vec3::ZERO {
@@ -292,6 +353,9 @@ pub fn ship_flight_system(
     mut autopilot: ResMut<AutoPilotState>,
     mut flight_state: ResMut<FlightState>,
     mut ship_query: Query<&mut Transform, With<Ship>>,
+    planet_query: Query<&Planet>,
+    moon_query: Query<&Moon>,
+    sun_query: Query<&Sun>,
 ) {
     let dt = time.delta_secs();
     let Ok(mut ship_transform) = ship_query.single_mut() else { return; };
@@ -335,7 +399,13 @@ pub fn ship_flight_system(
         }
 
         if flight_state.boost_mode {
-            let target_speed = MAX_SPEED_CAP;
+            let target_distance = get_nearest_celestial_distance(
+                flight_state.world_pos,
+                &sun_query,
+                &planet_query,
+                &moon_query,
+            );
+            let target_speed = compute_warp_speed_cap(target_distance);
             let accel_rate = 1.0 - (-2.5 * dt).exp();
             let forward = ship_transform.forward().as_vec3();
             let current_speed = flight_state.velocity.length();
@@ -893,10 +963,11 @@ pub fn autopilot_flight_system(
             return;
         }
         let decel_start_dist = (arrival_dist * 3.0).max(50_000.0);
+        let warp_speed_cap = compute_warp_speed_cap(real_distance_to_dest);
         if real_distance_to_dest > decel_start_dist + 10_000.0 && real_distance_to_dest > 30_000.0 {
             flight_state.boost_mode = true;
         }
-        let step_vel = target_dir * MAX_SPEED_CAP;
+        let step_vel = target_dir * warp_speed_cap;
         flight_state.velocity = step_vel;
         flight_state.world_pos += step_vel * dt;
         return;
@@ -961,16 +1032,17 @@ pub fn autopilot_flight_system(
     }
 
     let min_approach_speed = 1200.0;
+    let warp_speed_cap = compute_warp_speed_cap(real_distance_to_dest);
     let max_cruise_speed = if flight_state.boost_mode {
-        MAX_SPEED_CAP * (real_distance_to_dest / 50_000_000.0).clamp(0.05, 1.0)
+        warp_speed_cap
     } else {
-        (rel_dist_to_arrival * 2.5).clamp(min_approach_speed, MAX_SPEED_CAP)
+        (rel_dist_to_arrival * 2.5).clamp(min_approach_speed, warp_speed_cap)
     };
 
     let max_safe_rel_speed = if dt > 0.0001 {
         (rel_dist_to_arrival * 0.85) / dt
     } else {
-        MAX_SPEED_CAP
+        warp_speed_cap
     };
 
     let target_rel_speed = max_cruise_speed.min(max_safe_rel_speed);
@@ -994,8 +1066,8 @@ pub fn autopilot_flight_system(
         }
     }
 
-    if flight_state.velocity.length() > MAX_SPEED_CAP {
-        flight_state.velocity = flight_state.velocity.normalize() * MAX_SPEED_CAP;
+    if flight_state.velocity.length() > warp_speed_cap {
+        flight_state.velocity = flight_state.velocity.normalize() * warp_speed_cap;
     }
 
     let current_rel_pos = flight_state.world_pos - destination_pos;
@@ -2032,6 +2104,56 @@ mod tests {
         assert!(
             dist_wp_to_obstacle >= min_clearance,
             "Bypass waypoint must provide generous safety clearance outside obstacle radius (dist={dist_wp_to_obstacle}, min={min_clearance})"
+        );
+    }
+
+    #[test]
+    fn test_distance_based_warp_acceleration_phases() {
+        let speed_10c = 10.0 * SPEED_OF_LIGHT;
+        let speed_500c = 500.0 * SPEED_OF_LIGHT;
+
+        // Nearby destination (e.g. Moon or close orbit <= 1M km) engages 10x c phase
+        let cap_close = compute_warp_speed_cap(500_000.0);
+        assert!(
+            (cap_close - speed_10c).abs() < 1.0,
+            "Warp speed cap for nearby targets (500k km) MUST be 10x c (found {})",
+            cap_close / SPEED_OF_LIGHT
+        );
+
+        let cap_1m = compute_warp_speed_cap(1_000_000.0);
+        assert!(
+            (cap_1m - speed_10c).abs() < 1.0,
+            "Warp speed cap for 1M km targets MUST be 10x c"
+        );
+
+        // Mid-distance inner planet transfers engage intermediate acceleration phases
+        let cap_50m = compute_warp_speed_cap(50_000_000.0);
+        let c_50m = cap_50m / SPEED_OF_LIGHT;
+        assert!(
+            c_50m > 10.0 && c_50m < 100.0,
+            "Warp cap for 50M km should be intermediate phase (found {}c)",
+            c_50m
+        );
+
+        let cap_150m = compute_warp_speed_cap(150_000_000.0);
+        let c_150m = cap_150m / SPEED_OF_LIGHT;
+        assert!(
+            c_150m > c_50m && c_150m < 250.0,
+            "Warp cap for 150M km should scale higher than 50M km phase (found {}c vs {}c)",
+            c_150m, c_50m
+        );
+
+        // Far destinations (>= 1B km) engage maximum 500x c phase
+        let cap_1b = compute_warp_speed_cap(1_000_000_000.0);
+        assert!(
+            (cap_1b - speed_500c).abs() < 1.0,
+            "Warp speed cap for distant targets (1B km) MUST reach 500x c"
+        );
+
+        let cap_5b = compute_warp_speed_cap(5_000_000_000.0);
+        assert!(
+            (cap_5b - speed_500c).abs() < 1.0,
+            "Warp speed cap for deep space targets (5B km) MUST cap at 500x c"
         );
     }
 }
