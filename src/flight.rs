@@ -454,6 +454,26 @@ pub fn ship_flight_system(
     ship_transform.translation = Vec3::ZERO;
 }
 
+/// Computes a perpendicular bypass waypoint to avoid a celestial body obstacle.
+fn compute_bypass_waypoint(
+    body_pos: Vec3,
+    closest_pt: Vec3,
+    min_clearance: f32,
+    line_dir: Vec3,
+) -> Vec3 {
+    let offset = closest_pt - body_pos;
+    let perp = if offset.length() > 10.0 {
+        offset.normalize()
+    } else {
+        let mut side = line_dir.cross(Vec3::Y);
+        if side.length_squared() < 0.001 {
+            side = line_dir.cross(Vec3::Z);
+        }
+        side.normalize()
+    };
+    body_pos + perp * (min_clearance * 1.5)
+}
+
 pub fn trigger_autopilot_destination(
     dest_key: usize,
     dest_name: &'static str,
@@ -494,17 +514,7 @@ pub fn trigger_autopilot_destination(
                 let closest_pt = start_pos + line_dir * proj;
                 let clearance = closest_pt.length();
                 if clearance < min_clearance {
-                    let offset = closest_pt;
-                    let perp = if offset.length() > 10.0 {
-                        offset.normalize()
-                    } else {
-                        let mut side = line_dir.cross(Vec3::Y);
-                        if side.length_squared() < 0.001 {
-                            side = line_dir.cross(Vec3::Z);
-                        }
-                        side.normalize()
-                    };
-                    let wp = perp * (min_clearance * 1.5);
+                    let wp = compute_bypass_waypoint(Vec3::ZERO, closest_pt, min_clearance, line_dir);
                     let d = start_pos.length();
                     if d < closest_obstacle_dist {
                         closest_obstacle_dist = d;
@@ -523,17 +533,7 @@ pub fn trigger_autopilot_destination(
                     let closest_pt = start_pos + line_dir * proj;
                     let clearance = (closest_pt - planet.world_pos).length();
                     if clearance < min_clearance {
-                        let offset = closest_pt - planet.world_pos;
-                        let perp = if offset.length() > 10.0 {
-                            offset.normalize()
-                        } else {
-                            let mut side = line_dir.cross(Vec3::Y);
-                            if side.length_squared() < 0.001 {
-                                side = line_dir.cross(Vec3::Z);
-                            }
-                            side.normalize()
-                        };
-                        let wp = planet.world_pos + perp * (min_clearance * 1.5);
+                        let wp = compute_bypass_waypoint(planet.world_pos, closest_pt, min_clearance, line_dir);
                         let d = start_pos.distance(planet.world_pos);
                         if d < closest_obstacle_dist {
                             closest_obstacle_dist = d;
@@ -759,17 +759,7 @@ pub fn autopilot_pathfinding_system(
             let closest_pt = start_pos + line_dir * proj;
             let clearance = closest_pt.length();
             if clearance < min_clearance {
-                let offset = closest_pt;
-                let perp = if offset.length() > 10.0 {
-                    offset.normalize()
-                } else {
-                    let mut side = line_dir.cross(Vec3::Y);
-                    if side.length_squared() < 0.001 {
-                        side = line_dir.cross(Vec3::Z);
-                    }
-                    side.normalize()
-                };
-                let wp = perp * (min_clearance * 1.5);
+                let wp = compute_bypass_waypoint(Vec3::ZERO, closest_pt, min_clearance, line_dir);
                 let d = start_pos.length();
                 if d < closest_obstacle_dist {
                     closest_obstacle_dist = d;
@@ -790,17 +780,7 @@ pub fn autopilot_pathfinding_system(
                 let closest_pt = start_pos + line_dir * proj;
                 let clearance = (closest_pt - planet.world_pos).length();
                 if clearance < min_clearance {
-                    let offset = closest_pt - planet.world_pos;
-                    let perp = if offset.length() > 10.0 {
-                        offset.normalize()
-                    } else {
-                        let mut side = line_dir.cross(Vec3::Y);
-                        if side.length_squared() < 0.001 {
-                            side = line_dir.cross(Vec3::Z);
-                        }
-                        side.normalize()
-                    };
-                    let wp = planet.world_pos + perp * (min_clearance * 1.5);
+                    let wp = compute_bypass_waypoint(planet.world_pos, closest_pt, min_clearance, line_dir);
                     let d = start_pos.distance(planet.world_pos);
                     if d < closest_obstacle_dist {
                         closest_obstacle_dist = d;
@@ -825,17 +805,7 @@ pub fn autopilot_pathfinding_system(
                 let closest_pt = start_pos + line_dir * proj;
                 let clearance = (closest_pt - moon.world_pos).length();
                 if clearance < min_clearance {
-                    let offset = closest_pt - moon.world_pos;
-                    let perp = if offset.length() > 10.0 {
-                        offset.normalize()
-                    } else {
-                        let mut side = line_dir.cross(Vec3::Y);
-                        if side.length_squared() < 0.001 {
-                            side = line_dir.cross(Vec3::Z);
-                        }
-                        side.normalize()
-                    };
-                    let wp = moon.world_pos + perp * (min_clearance * 1.5);
+                    let wp = compute_bypass_waypoint(moon.world_pos, closest_pt, min_clearance, line_dir);
                     let d = start_pos.distance(moon.world_pos);
                     if d < closest_obstacle_dist {
                         closest_obstacle_dist = d;
@@ -937,27 +907,9 @@ pub fn autopilot_flight_system(
     let arrival_dist = compute_orbit_boundary(destination_radius);
     let target_dir = to_target.normalize_or_zero();
 
-    // Check alignment state and rotate ship towards target vector
-    if let Some(mut ship_transform) = ship_query.iter_mut().next() {
-        if target_dir != Vec3::ZERO {
-            let destination_rot = rotation_looking_to(target_dir);
-            let current_forward = ship_transform.forward().as_vec3();
-            let angle_diff = current_forward.angle_between(target_dir);
-            if angle_diff < 0.05 {
-                autopilot.aligned = true;
-            } else {
-                let rot_decay = 1.0 - (-10.0 * dt).exp();
-                ship_transform.rotation = ship_transform.rotation.slerp(destination_rot, rot_decay);
-            }
-        } else {
-            autopilot.aligned = true;
-        }
-    } else {
-        autopilot.aligned = true;
-    }
-
     let Ok(mut ship_transform) = ship_query.single_mut() else {
         // Headless execution fallback without ship transform component
+        autopilot.aligned = true;
         if autopilot.arrived {
             flight_state.world_pos = destination_pos;
             return;
@@ -972,6 +924,21 @@ pub fn autopilot_flight_system(
         flight_state.world_pos += step_vel * dt;
         return;
     };
+
+    // Check alignment state and rotate ship towards target vector
+    if target_dir != Vec3::ZERO {
+        let destination_rot = rotation_looking_to(target_dir);
+        let current_forward = ship_transform.forward().as_vec3();
+        let angle_diff = current_forward.angle_between(target_dir);
+        if angle_diff < 0.05 {
+            autopilot.aligned = true;
+        } else {
+            let rot_decay = 1.0 - (-10.0 * dt).exp();
+            ship_transform.rotation = ship_transform.rotation.slerp(destination_rot, rot_decay);
+        }
+    } else {
+        autopilot.aligned = true;
+    }
 
     // Smooth arrived state position holding following the planet's orbital position
     if autopilot.arrived {
@@ -1145,7 +1112,7 @@ pub fn celestial_collision_system(
         false
     };
 
-    let parent_planet_idx = if dest_idx == Some(100) {
+    let parent_planet_idx = {
         let mut p_idx = None;
         for moon in &moon_query {
             if moon.name == dest_name {
@@ -1154,8 +1121,6 @@ pub fn celestial_collision_system(
             }
         }
         p_idx
-    } else {
-        None
     };
 
     for sun in &sun_query {
@@ -1166,14 +1131,14 @@ pub fn celestial_collision_system(
     }
 
     for planet in &planet_query {
-        let is_target = is_ap_active && (dest_name == planet.name || (dest_name.is_empty() && dest_idx == Some(planet.index)) || (dest_idx == Some(100) && Some(planet.index) == parent_planet_idx));
+        let is_target = is_ap_active && (dest_name == planet.name || (dest_name.is_empty() && dest_idx == Some(planet.index)) || Some(planet.index) == parent_planet_idx);
         if check_collision(planet.world_pos, planet.radius, Vec3::ZERO, is_target) {
             return;
         }
     }
 
     for moon in &moon_query {
-        let is_target = is_ap_active && dest_idx == Some(100) && moon.name == dest_name;
+        let is_target = is_ap_active && dest_name == moon.name;
         if check_collision(moon.world_pos, moon.radius, Vec3::ZERO, is_target) {
             return;
         }
@@ -1320,6 +1285,7 @@ pub fn play_dragon_animations_system(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::CelestialDestinationType;
 
     #[test]
     fn test_z_axis_roll_controls() {
@@ -1843,7 +1809,6 @@ mod tests {
 
     #[test]
     fn test_aphora_key_99_autopilot_destination() {
-        use crate::components::CelestialDestinationType;
         let dest = get_destination_by_key(99);
         assert!(dest.is_some(), "Key 99 should exist in AUTOPILOT_DESTINATIONS");
         let dest = dest.unwrap();

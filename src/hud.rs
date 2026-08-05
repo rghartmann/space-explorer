@@ -5,6 +5,7 @@ use bevy::transform::TransformSystems;
 use crate::components::{
     AutoPilotHudText, AutopilotWarningBanner, CelestialDestinationType, CelestialLabel, Moon, PilotCamera, Planet, Sun,
 };
+use crate::components::AU;
 use crate::flight::SPEED_OF_LIGHT;
 use crate::resources::{AppState, AutoPilotState, FlightControlMode, FlightState};
 
@@ -27,8 +28,8 @@ impl Plugin for HudPlugin {
 }
 
 pub fn format_dual_space_distance(dist_km: f32) -> String {
-    let au = dist_km / 149_597_870.7;
-    if dist_km >= 149_597_870.7 * 0.1 {
+    let au = dist_km / AU;
+    if dist_km >= AU * 0.1 {
         format!("{:.2} AU ({:.1}M km)", au, dist_km / 1_000_000.0)
     } else if dist_km >= 1_000_000.0 {
         format!("{:.3} AU ({:.2}M km)", au, dist_km / 1_000_000.0)
@@ -40,8 +41,8 @@ pub fn format_dual_space_distance(dist_km: f32) -> String {
 }
 
 pub fn format_dual_space_distance_compact(dist_km: f32) -> String {
-    let au = dist_km / 149_597_870.7;
-    if dist_km >= 149_597_870.7 * 0.05 {
+    let au = dist_km / AU;
+    if dist_km >= AU * 0.05 {
         format!("{:.2}AU ({:.0}M km)", au, dist_km / 1_000_000.0)
     } else if dist_km >= 100_000.0 {
         format!("{:.3}AU ({:.0}k km)", au, dist_km / 1_000.0)
@@ -137,13 +138,12 @@ pub fn update_hud_system(
                     dest_world_pos = Some(pos);
                 }
 
-                if let Some(dest_pos) = dest_world_pos {
-                    let dist = flight_state.world_pos.distance(dest_pos);
+                let dist_km = dest_world_pos.map(|dest_pos| flight_state.world_pos.distance(dest_pos));
+                if let Some(dist) = dist_km {
                     dist_str = format_dual_space_distance(dist);
                 }
 
-                let eta_str = if let Some(dest_pos) = dest_world_pos {
-                    let dist_km = flight_state.world_pos.distance(dest_pos);
+                let eta_str = if let Some(dist_km) = dist_km {
                     if speed < 0.1 || autopilot.arrived {
                         "N/A".to_string()
                     } else {

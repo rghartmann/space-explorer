@@ -253,46 +253,28 @@ pub fn update_planet_lod_mesh_system(
             continue;
         }
 
-        // Quick exit if blend is already 0.0 and target blend was 0.0, and ship is far away
-        if (lod.blend - lod.target_blend).abs() <= 0.001 && lod.target_blend == 0.0 {
-            let is_destination = if autopilot.active {
-                if lod.is_moon {
-                    autopilot.destination_name == lod.moon_name
-                } else {
-                    planet_query.iter().find(|p| p.index == lod.planet_index).map_or(false, |p| p.name == autopilot.destination_name)
-                }
-            } else {
-                false
-            };
-
-            if !is_destination {
-                let is_near = if lod.is_moon {
-                    moon_query.iter().find(|m| m.name == lod.moon_name).map_or(false, |m| flight_state.world_pos.distance(m.world_pos) < m.radius * 6.0)
-                } else {
-                    planet_query.iter().find(|p| p.index == lod.planet_index).map_or(false, |p| flight_state.world_pos.distance(p.world_pos) < p.radius * 6.0)
-                };
-                if !is_near {
-                    continue;
-                }
-            }
-        }
-
         let is_destination = if autopilot.active {
             if lod.is_moon {
                 autopilot.destination_name == lod.moon_name
             } else {
-                planet_query.iter().find(|p| p.index == lod.planet_index).map_or(false, |p| p.name == autopilot.destination_name)
+                planet_query.iter().find(|p| p.index == lod.planet_index).is_some_and(|p| p.name == autopilot.destination_name)
             }
         } else {
             false
         };
 
-        // Check proximity if ship is near a planet or moon surface
         let is_near = if lod.is_moon {
-            moon_query.iter().find(|m| m.name == lod.moon_name).map_or(false, |m| flight_state.world_pos.distance(m.world_pos) < m.radius * 6.0)
+            moon_query.iter().find(|m| m.name == lod.moon_name).is_some_and(|m| flight_state.world_pos.distance(m.world_pos) < m.radius * 6.0)
         } else {
-            planet_query.iter().find(|p| p.index == lod.planet_index).map_or(false, |p| flight_state.world_pos.distance(p.world_pos) < p.radius * 6.0)
+            planet_query.iter().find(|p| p.index == lod.planet_index).is_some_and(|p| flight_state.world_pos.distance(p.world_pos) < p.radius * 6.0)
         };
+
+        // Quick exit if blend is already 0.0 and target blend was 0.0, and ship is far away
+        if (lod.blend - lod.target_blend).abs() <= 0.001 && lod.target_blend == 0.0
+            && !is_destination && !is_near
+        {
+            continue;
+        }
 
         let target_blend = if is_destination || is_near { 1.0 } else { 0.0 };
         lod.target_blend = target_blend;

@@ -1,7 +1,11 @@
-use bevy::camera::visibility::NoFrustumCulling;
-use bevy::core_pipeline::tonemapping::Tonemapping;
-use bevy::post_process::bloom::{Bloom, BloomPrefilter};
-use bevy::prelude::*;
+use bevy::{
+    asset::RenderAssetUsages,
+    camera::visibility::NoFrustumCulling,
+    core_pipeline::tonemapping::Tonemapping,
+    post_process::bloom::{Bloom, BloomPrefilter},
+    prelude::*,
+    render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
+};
 
 use crate::audio::{ensure_ambient_piano_file, ensure_engine_hum_file};
 use crate::components::*;
@@ -24,12 +28,6 @@ pub fn setup_scene(
         orbit_rng = orbit_rng.wrapping_mul(6364136223846793005).wrapping_add(1);
         (orbit_rng as f32 / u64::MAX as f32) * std::f32::consts::TAU
     };
-
-
-
-
-
-
 
     commands
         .spawn((
@@ -188,7 +186,6 @@ pub fn setup_scene(
                         Button,
                         AutopilotMenuItemButton {
                             destination_key: dest.key_num,
-                            destination_name: dest.name,
                         },
                         Node {
                             padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
@@ -662,7 +659,7 @@ pub fn setup_scene(
     // --- MAIN ASTEROID BELT (2.1 AU to 3.3 AU: ~500,000 - ~800,000 KM) ---
     let asteroid_tex: Handle<Image> = asset_server.load("textures/asteroid.jpg");
     let asteroid_base_mat = materials.add(StandardMaterial {
-        base_color_texture: Some(asteroid_tex),
+        base_color_texture: Some(asteroid_tex.clone()),
         perceptual_roughness: 0.95,
         reflectance: 0.08,
         ..default()
@@ -906,7 +903,7 @@ pub fn setup_scene(
     // Saturn Ring Dust & Rock Particles embedded inside the 2D ring plane
     let ring_rock_mesh = meshes.add(create_uv_sphere(1.0, 12, 8));
     let ring_rock_mat = materials.add(StandardMaterial {
-        base_color_texture: Some(asset_server.load("textures/asteroid.jpg")),
+        base_color_texture: Some(asteroid_tex.clone()),
         perceptual_roughness: 0.8,
         reflectance: 0.1,
         ..default()
@@ -1395,8 +1392,6 @@ pub fn setup_scene(
 }
 
 pub fn create_uv_sphere(radius: f32, sectors: u32, stacks: u32) -> Mesh {
-    use bevy::render::mesh::VertexAttributeValues;
-
     let mut mesh = Sphere::new(radius)
         .mesh()
         .kind(bevy::render::mesh::SphereKind::Uv { sectors, stacks })
@@ -1419,9 +1414,6 @@ pub fn create_uv_sphere(radius: f32, sectors: u32, stacks: u32) -> Mesh {
 }
 
 pub fn create_flat_ring_mesh(inner_radius: f32, outer_radius: f32, sectors: u32, rings: u32) -> Mesh {
-    use bevy::asset::RenderAssetUsages;
-    use bevy::render::mesh::{Indices, PrimitiveTopology};
-
     let mut positions: Vec<[f32; 3]> = Vec::new();
     let mut normals: Vec<[f32; 3]> = Vec::new();
     let mut uvs: Vec<[f32; 2]> = Vec::new();
@@ -1509,9 +1501,6 @@ pub fn setup_loading_screen(
     asset_server: Res<AssetServer>,
     mut loading_assets: ResMut<LoadingAssets>,
 ) {
-    ensure_engine_hum_file();
-    ensure_ambient_piano_file();
-
     let asset_paths = [
         "audio/engine_hum.wav",
         "audio/ambient_piano.wav",
@@ -1654,7 +1643,6 @@ impl Plugin for ScenePlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::render::mesh::VertexAttributeValues;
 
     #[test]
     fn test_sphere_uvs() {
@@ -1761,5 +1749,3 @@ mod tests {
         assert!(saturn_ring_tex_path.exists(), "saturn_ring.png texture must exist");
     }
 }
-
-

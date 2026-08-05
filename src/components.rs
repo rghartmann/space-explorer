@@ -78,7 +78,6 @@ pub struct AutopilotMenuContainer;
 #[derive(Component)]
 pub struct AutopilotMenuItemButton {
     pub destination_key: usize,
-    pub destination_name: &'static str,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -180,7 +179,3 @@ pub struct ThrusterParticle {
 
 #[derive(Component)]
 pub struct SunDirectionalLight;
-
-
-
-

@@ -67,7 +67,7 @@ fn compute_logarithmic_transform(
     let min_scale = (min_scale_factor * d_vis) / radius.max(0.1);
     let final_scale_log = scale_log.max(min_scale);
 
-    let final_scale = 1.0 * (1.0 - blend_smooth) + final_scale_log * blend_smooth;
+    let final_scale = (1.0 - blend_smooth) + final_scale_log * blend_smooth;
 
     (dir * d_vis, Vec3::splat(final_scale), Visibility::Inherited)
 }
@@ -217,17 +217,17 @@ pub fn animate_sun_surface_system(
         anim.frame_timer.tick(delta);
         anim.pulse_timer += delta_secs;
 
-        if let Some(mut mat) = materials.get_mut(mat_handle) {
-            if anim.frame_timer.just_finished() && !anim.frame_handles.is_empty() {
-                anim.current_frame = (anim.current_frame + 1) % anim.frame_handles.len();
-                let next_tex = anim.frame_handles[anim.current_frame].clone();
-                mat.base_color_texture = Some(next_tex.clone());
-                mat.emissive_texture = Some(next_tex);
+        if let Some(mut mat) = materials.get_mut(mat_handle)
+            && anim.frame_timer.just_finished() && !anim.frame_handles.is_empty()
+        {
+            anim.current_frame = (anim.current_frame + 1) % anim.frame_handles.len();
+            let next_tex = anim.frame_handles[anim.current_frame].clone();
+            mat.base_color_texture = Some(next_tex.clone());
+            mat.emissive_texture = Some(next_tex);
 
-                // Gentle solar flare emissive pulsation (updated at frame change rate to avoid per-frame GPU re-uploads)
-                let pulse = (anim.pulse_timer * 0.5).sin() * 1.5;
-                mat.emissive = LinearRgba::new(35.0 + pulse, 25.0 + pulse * 0.7, 6.0, 1.0);
-            }
+            // Gentle solar flare emissive pulsation (updated at frame change rate to avoid per-frame GPU re-uploads)
+            let pulse = (anim.pulse_timer * 0.5).sin() * 1.5;
+            mat.emissive = LinearRgba::new(35.0 + pulse, 25.0 + pulse * 0.7, 6.0, 1.0);
         }
     }
 }

@@ -75,6 +75,3 @@ pub struct AutopilotMenuState {
     pub input_buffer: String,
     pub buffer_timer: f32,
 }
-
-
-
