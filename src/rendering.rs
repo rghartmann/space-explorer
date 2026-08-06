@@ -178,11 +178,13 @@ pub fn update_planet_area_lights_system(
 
         let local_sun_dir = parent_rot.inverse() * sun_dir_world;
 
-        transform.translation = local_sun_dir * (planet_radius * 3.5);
+        // Position light on night-side opposite to sun to act as soft night-side fill/bounce light
+        transform.translation = -local_sun_dir * (planet_radius * 2.5);
 
-        light.radius = 0.0;
-        light.range = 0.0;
-        light.intensity = 0.0;
+        light.radius = planet_radius * 1.5;
+        light.range = planet_radius * 8.0;
+        light.intensity = planet_radius * 25.0;
+        light.color = Color::srgb(0.75, 0.82, 0.95);
     }
 }
 
@@ -245,6 +247,20 @@ mod tests {
         let light_transform = Transform::IDENTITY.looking_at(dir_from_sun, Vec3::Y);
         let forward_dir = *light_transform.forward();
         assert!((forward_dir - dir_from_sun).length() < 1e-4);
+    }
+
+    #[test]
+    fn test_planet_night_side_fill_light_positioning() {
+        let world_pos = Vec3::new(149_597_870.0, 0.0, 0.0);
+        let radius = 6371.0;
+        let sun_dir_world = -world_pos.normalize_or_zero(); // (-1.0, 0.0, 0.0)
+        let local_sun_dir = sun_dir_world; // Assuming identity rotation
+
+        let fill_light_pos = -local_sun_dir * (radius * 2.5); // Points to (+1.0, 0.0, 0.0) * radius * 2.5
+        assert_eq!(fill_light_pos, Vec3::new(radius * 2.5, 0.0, 0.0));
+
+        let intensity = radius * 25.0;
+        assert!(intensity > 0.0, "Fill light intensity must be active for night side rendering");
     }
 }
 

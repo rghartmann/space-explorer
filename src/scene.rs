@@ -365,8 +365,8 @@ pub fn setup_scene(
 
     // Ambient Fill Light for deep space (Subtle & Dramatic Night-side Surface Visibility)
     commands.spawn(AmbientLight {
-        color: Color::srgba(0.22, 0.25, 0.32, 1.0),
-        brightness: 1.35,
+        color: Color::srgba(0.36, 0.40, 0.48, 1.0),
+        brightness: 3.8,
         affects_lightmapped_meshes: false,
     });
 
@@ -375,7 +375,7 @@ pub fn setup_scene(
         SunDirectionalLight,
         DirectionalLight {
             color: Color::srgb(1.0, 0.97, 0.92),
-            illuminance: 15_000.0,
+            illuminance: 14_000.0,
             shadow_maps_enabled: false,
             contact_shadows_enabled: false,
             ..default()
@@ -460,10 +460,11 @@ pub fn setup_scene(
     let mercury_tex: Handle<Image> = asset_server.load("textures/mercury.jpg");
     let mercury_mesh = meshes.add(create_uv_sphere(2439.7, 192, 96));
     let mercury_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.35, 0.35, 0.35),
+        base_color: Color::srgb(0.75, 0.75, 0.75),
         base_color_texture: Some(mercury_tex.clone()),
-        perceptual_roughness: 0.95,
-        reflectance: 0.08,
+        emissive: LinearRgba::new(0.05, 0.05, 0.05, 0.0),
+        perceptual_roughness: 0.85,
+        reflectance: 0.12,
         ..default()
     });
     let mercury_entity = commands.spawn((
@@ -492,10 +493,11 @@ pub fn setup_scene(
     let venus_tex: Handle<Image> = asset_server.load("textures/venus.jpg");
     let venus_mesh = meshes.add(create_uv_sphere(6051.8, 192, 96));
     let venus_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.38, 0.36, 0.32),
+        base_color: Color::srgb(0.88, 0.84, 0.75),
         base_color_texture: Some(venus_tex.clone()),
-        perceptual_roughness: 0.90,
-        reflectance: 0.10,
+        emissive: LinearRgba::new(0.09, 0.08, 0.07, 0.0),
+        perceptual_roughness: 0.70,
+        reflectance: 0.25,
         ..default()
     });
     let venus_entity = commands.spawn((
@@ -520,11 +522,12 @@ pub fn setup_scene(
     let earth_tex: Handle<Image> = asset_server.load("textures/earth.jpg");
     let earth_mesh = meshes.add(create_uv_sphere(6371.0, 192, 96));
     let earth_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.42, 0.42, 0.42),
+        base_color: Color::srgb(0.85, 0.85, 0.88),
         base_color_texture: Some(earth_tex.clone()),
-        perceptual_roughness: 0.70,
-        metallic: 0.05,
-        reflectance: 0.12,
+        emissive: LinearRgba::new(0.08, 0.09, 0.11, 0.0),
+        perceptual_roughness: 0.65,
+        metallic: 0.02,
+        reflectance: 0.20,
         ..default()
     });
     let earth_entity = commands.spawn((
@@ -568,10 +571,11 @@ pub fn setup_scene(
     let moon_tex: Handle<Image> = asset_server.load("textures/moon.jpg");
     let moon_mesh = meshes.add(create_uv_sphere(1737.4, 96, 48));
     let moon_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.32, 0.32, 0.32),
+        base_color: Color::srgb(0.75, 0.75, 0.75),
         base_color_texture: Some(moon_tex.clone()),
-        perceptual_roughness: 0.95,
-        reflectance: 0.06,
+        emissive: LinearRgba::new(0.05, 0.05, 0.05, 0.0),
+        perceptual_roughness: 0.85,
+        reflectance: 0.12,
         ..default()
     });
     let moon_entity = commands.spawn((
@@ -600,10 +604,11 @@ pub fn setup_scene(
     let mars_tex: Handle<Image> = asset_server.load("textures/mars.jpg");
     let mars_mesh = meshes.add(create_uv_sphere(3389.5, 192, 96));
     let mars_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.40, 0.35, 0.30),
+        base_color: Color::srgb(0.75, 0.65, 0.55),
         base_color_texture: Some(mars_tex.clone()),
-        perceptual_roughness: 0.90,
-        reflectance: 0.08,
+        emissive: LinearRgba::new(0.06, 0.05, 0.04, 0.0),
+        perceptual_roughness: 0.80,
+        reflectance: 0.12,
         ..default()
     });
     let mars_entity = commands.spawn((
@@ -632,10 +637,11 @@ pub fn setup_scene(
     let ceres_tex: Handle<Image> = asset_server.load("textures/ceres.jpg");
     let ceres_mesh = meshes.add(create_uv_sphere(473.0, 96, 48));
     let ceres_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.32, 0.32, 0.32),
+        base_color: Color::srgb(0.75, 0.75, 0.75),
         base_color_texture: Some(ceres_tex.clone()),
-        perceptual_roughness: 0.95,
-        reflectance: 0.06,
+        emissive: LinearRgba::new(0.05, 0.05, 0.05, 0.0),
+        perceptual_roughness: 0.85,
+        reflectance: 0.12,
         ..default()
     });
     let ceres_entity = commands.spawn((
@@ -740,10 +746,11 @@ pub fn setup_scene(
     let jupiter_tex: Handle<Image> = asset_server.load("textures/jupiter.jpg");
     let jupiter_mesh = meshes.add(create_uv_sphere(69911.0, 192, 96));
     let jupiter_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.38, 0.35, 0.32),
+        base_color: Color::srgb(0.88, 0.84, 0.78),
         base_color_texture: Some(jupiter_tex.clone()),
-        perceptual_roughness: 0.88,
-        reflectance: 0.10,
+        emissive: LinearRgba::new(0.09, 0.08, 0.07, 0.0),
+        perceptual_roughness: 0.70,
+        reflectance: 0.22,
         ..default()
     });
     let jupiter_entity = commands.spawn((
@@ -771,9 +778,10 @@ pub fn setup_scene(
     let io_pos = jupiter_pos + Vec3::new(io_orbit_radius * io_angle.cos(), 0.0, io_orbit_radius * io_angle.sin());
     let io_mesh = meshes.add(create_uv_sphere(1821.6, 192, 96));
     let io_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.9, 0.85, 0.2),
-        perceptual_roughness: 0.7,
-        reflectance: 0.20,
+        base_color: Color::srgb(0.90, 0.85, 0.25),
+        emissive: LinearRgba::new(0.09, 0.08, 0.03, 0.0),
+        perceptual_roughness: 0.65,
+        reflectance: 0.22,
         ..default()
     });
     let io_entity = commands.spawn((
@@ -801,9 +809,10 @@ pub fn setup_scene(
     let europa_pos = jupiter_pos + Vec3::new(europa_orbit_radius * europa_angle.cos(), 0.0, europa_orbit_radius * europa_angle.sin());
     let europa_mesh = meshes.add(create_uv_sphere(1560.8, 192, 96));
     let europa_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.82, 0.85, 0.92),
-        perceptual_roughness: 0.65,
-        reflectance: 0.25,
+        base_color: Color::srgb(0.90, 0.92, 0.96),
+        emissive: LinearRgba::new(0.09, 0.09, 0.11, 0.0),
+        perceptual_roughness: 0.60,
+        reflectance: 0.28,
         ..default()
     });
     let europa_entity = commands.spawn((
@@ -832,10 +841,11 @@ pub fn setup_scene(
     let saturn_tex: Handle<Image> = asset_server.load("textures/saturn.jpg");
     let saturn_mesh = meshes.add(create_uv_sphere(58232.0, 192, 96));
     let saturn_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.42, 0.38, 0.32),
+        base_color: Color::srgb(0.88, 0.82, 0.74),
         base_color_texture: Some(saturn_tex.clone()),
-        perceptual_roughness: 0.70,
-        reflectance: 0.25,
+        emissive: LinearRgba::new(0.08, 0.07, 0.06, 0.0),
+        perceptual_roughness: 0.68,
+        reflectance: 0.22,
         ..default()
     });
     let saturn_entity = commands
@@ -944,10 +954,11 @@ pub fn setup_scene(
     let uranus_tex: Handle<Image> = asset_server.load("textures/uranus.jpg");
     let uranus_mesh = meshes.add(create_uv_sphere(25362.0, 192, 96));
     let uranus_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.32, 0.40, 0.42),
+        base_color: Color::srgb(0.75, 0.88, 0.90),
         base_color_texture: Some(uranus_tex.clone()),
-        perceptual_roughness: 0.85,
-        reflectance: 0.10,
+        emissive: LinearRgba::new(0.07, 0.08, 0.09, 0.0),
+        perceptual_roughness: 0.75,
+        reflectance: 0.15,
         ..default()
     });
     let uranus_entity = commands.spawn((
@@ -976,10 +987,11 @@ pub fn setup_scene(
     let neptune_tex: Handle<Image> = asset_server.load("textures/neptune.jpg");
     let neptune_mesh = meshes.add(create_uv_sphere(24622.0, 192, 96));
     let neptune_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.30, 0.35, 0.45),
+        base_color: Color::srgb(0.70, 0.80, 0.95),
         base_color_texture: Some(neptune_tex.clone()),
-        perceptual_roughness: 0.85,
-        reflectance: 0.10,
+        emissive: LinearRgba::new(0.06, 0.07, 0.09, 0.0),
+        perceptual_roughness: 0.75,
+        reflectance: 0.15,
         ..default()
     });
     let neptune_entity = commands.spawn((
@@ -1008,10 +1020,11 @@ pub fn setup_scene(
     let pluto_tex: Handle<Image> = asset_server.load("textures/pluto.jpg");
     let pluto_mesh = meshes.add(create_uv_sphere(1188.3, 192, 96));
     let pluto_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.38, 0.35, 0.32),
+        base_color: Color::srgb(0.78, 0.75, 0.72),
         base_color_texture: Some(pluto_tex.clone()),
-        perceptual_roughness: 0.88,
-        reflectance: 0.10,
+        emissive: LinearRgba::new(0.05, 0.05, 0.05, 0.0),
+        perceptual_roughness: 0.80,
+        reflectance: 0.12,
         ..default()
     });
     let pluto_entity = commands.spawn((
@@ -1039,8 +1052,9 @@ pub fn setup_scene(
     let charon_pos = pluto_pos + Vec3::new(charon_orbit_radius * charon_angle.cos(), 0.0, charon_orbit_radius * charon_angle.sin());
     let charon_mesh = meshes.add(create_uv_sphere(606.0, 192, 96));
     let charon_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.5, 0.48, 0.45),
-        perceptual_roughness: 0.9,
+        base_color: Color::srgb(0.75, 0.73, 0.70),
+        emissive: LinearRgba::new(0.05, 0.05, 0.05, 0.0),
+        perceptual_roughness: 0.85,
         reflectance: 0.12,
         ..default()
     });
@@ -1070,9 +1084,11 @@ pub fn setup_scene(
     let haumea_tex: Handle<Image> = asset_server.load("textures/haumea.jpg");
     let haumea_mesh = meshes.add(create_uv_sphere(1050.0, 192, 96));
     let haumea_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.85, 0.85, 0.85),
         base_color_texture: Some(haumea_tex.clone()),
-        perceptual_roughness: 0.75,
-        reflectance: 0.18,
+        emissive: LinearRgba::new(0.06, 0.06, 0.06, 0.0),
+        perceptual_roughness: 0.70,
+        reflectance: 0.20,
         ..default()
     });
     let haumea_entity = commands.spawn((
@@ -1101,9 +1117,11 @@ pub fn setup_scene(
     let makemake_tex: Handle<Image> = asset_server.load("textures/makemake.jpg");
     let makemake_mesh = meshes.add(create_uv_sphere(715.0, 192, 96));
     let makemake_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.85, 0.85, 0.85),
         base_color_texture: Some(makemake_tex.clone()),
-        perceptual_roughness: 0.75,
-        reflectance: 0.18,
+        emissive: LinearRgba::new(0.06, 0.06, 0.06, 0.0),
+        perceptual_roughness: 0.70,
+        reflectance: 0.20,
         ..default()
     });
     let makemake_entity = commands.spawn((
@@ -1132,9 +1150,11 @@ pub fn setup_scene(
     let eris_tex: Handle<Image> = asset_server.load("textures/eris.jpg");
     let eris_mesh = meshes.add(create_uv_sphere(1163.0, 192, 96));
     let eris_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.85, 0.85, 0.85),
         base_color_texture: Some(eris_tex.clone()),
-        perceptual_roughness: 0.75,
-        reflectance: 0.18,
+        emissive: LinearRgba::new(0.06, 0.06, 0.06, 0.0),
+        perceptual_roughness: 0.70,
+        reflectance: 0.20,
         ..default()
     });
     let eris_entity = commands.spawn((
@@ -1163,10 +1183,11 @@ pub fn setup_scene(
     let aphora_tex: Handle<Image> = asset_server.load("textures/aphora.png");
     let aphora_mesh = meshes.add(create_uv_sphere(52000.0, 192, 96));
     let aphora_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.9, 0.8, 0.95),
+        base_color: Color::srgb(0.92, 0.86, 0.96),
         base_color_texture: Some(aphora_tex.clone()),
-        perceptual_roughness: 0.85,
-        reflectance: 0.12,
+        emissive: LinearRgba::new(0.09, 0.07, 0.10, 0.0),
+        perceptual_roughness: 0.75,
+        reflectance: 0.18,
         ..default()
     });
 
